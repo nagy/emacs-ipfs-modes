@@ -13,7 +13,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~794 lines) |
+| `cid-mode.el` | CID decoder major mode (~809 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
 | `embark-cid.el` | Embark target finder and actions for CIDs (~83 lines) |
 | `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
@@ -34,11 +34,13 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 ## Architecture
 
-### `cid-mode.el` (~794 lines)
+### `cid-mode.el` (~809 lines)
 
 The mode is organized into these sections:
 
-1. **Customization** — `defgroup cid`, `cid-gateway-url`, `cid-hex-bytes-per-line`
+1. **Customization** — `defgroup cid`, `cid-gateway-url`,
+   `cid-hex-bytes-per-line`, faces (`cid-header-face`,
+   `cid-section-face`, `cid-field-face`)
 2. **Constants** — Multibase, multicodec, and multihash tables
    (canonical names from the `go-multicodec` / `go-multibase` tables
    vendored in the IPFS Kubo source)
@@ -201,7 +203,6 @@ emacs -Q --batch -L . -l cid-mode.el \
 | `w` | `embark-cid-copy` | Copy CID to kill ring |
 | `b` | `embark-cid-open-gateway` | Open CID on IPFS gateway |
 
-## Conventions
 ## Conventions
 
 ### `defvar-keymap` with `:parent`
@@ -376,6 +377,14 @@ with `cl-labels`-style helpers (`cid--insert-header`,
 because `cid--display` is outside the mode body (modes that
 use `cl-labels` inside `define-derived-mode` avoid this).
 
+Faces are defined as `defface` rather than inline `:inherit` props:
+
+- `cid-header-face` — inherits `outline-1`; used for the CID string title
+- `cid-section-face` — inherits `font-lock-keyword-face` + `bold`;
+  used for section headings (Identity, Multihash, Sizes, etc.)
+- `cid-field-face` — inherits `font-lock-type-face`; used for field
+  labels (CID, Version, Multibase, etc.)
+
 ## TODO
 
 - **`cl-labels` for display helpers** — move the five `cid--insert-*`
@@ -383,7 +392,7 @@ use `cl-labels` inside `define-derived-mode` avoid this).
   called from one place and don't need package-wide visibility.
 - **Replace Unicode box-drawing** — the `╔═` section headings in
   `cid--insert-section` are non-standard.  Consider replacing with
-  plain text section headings using `font-lock-keyword-face`.
+  plain text section headings.
 - **`dag-mode`** — browse IPLD DAG nodes by following links in
   dag-pb/dag-cbor content
 - **`ipfs-mode`** — interactive IPFS node control (peers, pinning,

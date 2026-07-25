@@ -69,6 +69,21 @@ ipfs.io.  Used by `cid-open-gateway' to open a CID in a browser."
   :type 'string
   :group 'cid)
 
+(defface cid-header-face
+  '((t :inherit outline-1))
+  "Face for the CID string header."
+  :group 'cid)
+
+(defface cid-section-face
+  '((t :inherit (font-lock-keyword-face bold)))
+  "Face for section headings (Identity, Multihash, etc.)."
+  :group 'cid)
+
+(defface cid-field-face
+  '((t :inherit font-lock-type-face))
+  "Face for field labels (CID, Version, Multibase, etc.)."
+  :group 'cid)
+
 (defcustom cid-hex-bytes-per-line 16
   "Number of hex bytes to show per line in the raw bytes dump."
   :type 'integer
@@ -347,10 +362,10 @@ CIDv0 is always dag-pb + sha2-256, so the conversion is unambiguous."
 ;;; CID info struct
 
 (cl-defstruct (cid-info
-              (:constructor cid-info--create)
-              (:conc-name cid-info-)
-              (:type vector)
-              (:named))
+               (:constructor cid-info--create)
+               (:conc-name cid-info-)
+               (:type vector)
+               (:named))
   cid-string        ;; the input string
   version           ;; 0 or 1
   multibase         ;; name of the multibase encoding
@@ -637,7 +652,7 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
 (defun cid--insert-header (cid-string version)
   "Insert a formatted header for CID-STRING and VERSION."
   (insert (propertize (truncate-string-to-width cid-string 72 nil nil t)
-                      'face '(:inherit bold :height 1.2))
+                      'face 'cid-header-face)
           "\n")
   (insert (propertize (format "CIDv%d" version)
                       'face '(:inherit shadow :height 0.9))
@@ -646,11 +661,11 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
 (defun cid--insert-section (title)
   "Insert a section heading for TITLE."
   (insert (propertize (concat "╔═ " title "\n")
-                      'face '(:inherit font-lock-keyword-face :weight bold))))
+                      'face 'cid-section-face)))
 
 (defun cid--insert-field (label value)
   "Insert LABEL and VALUE on a line."
-  (insert (propertize (format "  %-14s " label) 'face 'font-lock-type-face)
+  (insert (propertize (format "  %-14s " label) 'face 'cid-field-face)
           (propertize value 'face 'font-lock-string-face)
           "\n"))
 
