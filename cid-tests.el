@@ -441,6 +441,42 @@
     (should-not (cid--bounds))))
 
 
+;;; Thing-at-point
+
+(ert-deftest cid-thing-at-point-v0 ()
+  "`thing-at-point' returns a CIDv0 when point is on it."
+  (with-temp-buffer
+    (insert "prefix " cid-test--v0-str " suffix")
+    (goto-char 25)
+    (should (equal (thing-at-point 'cid) cid-test--v0-str))))
+
+(ert-deftest cid-thing-at-point-v1 ()
+  "`thing-at-point' returns a CIDv1 when point is on one."
+  ;; Use a clean base32-prefixed string without ambiguous chars.
+  (with-temp-buffer
+    (let ((cid "babcdefghjk"))
+      (insert "prefix " cid " suffix")
+      (goto-char 12)
+      (should (equal (thing-at-point 'cid) cid)))))
+
+(ert-deftest cid-thing-at-point-no-cid ()
+  "`thing-at-point' returns nil when not on a CID."
+  (with-temp-buffer
+    (insert "just some nothing text")
+    (goto-char 6)
+    (should-not (thing-at-point 'cid))))
+
+(ert-deftest cid-thing-at-point-bounds ()
+  "`bounds-of-thing-at-point' returns the correct span."
+  (with-temp-buffer
+    (insert "before " cid-test--v0-str " after")
+    (goto-char 20)
+    (let ((bounds (bounds-of-thing-at-point 'cid)))
+      (should bounds)
+      (should (equal (buffer-substring (car bounds) (cdr bounds))
+                     cid-test--v0-str)))))
+
+
 ;;; Bookmarks
 
 (ert-deftest cid-bookmark-make-record ()

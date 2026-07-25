@@ -48,6 +48,8 @@
 
 (require 'bookmark)
 (require 'cl-lib)
+(require 'rx)
+(require 'thingatpt)
 
 
 ;;; Customization
@@ -142,6 +144,29 @@ in the IPFS Kubo source.")
 Codes and names from the canonical go-multicodec table in the
 IPFS Kubo source.  Digest-size is the expected length in bytes,
 or 0 for variable.")
+
+(rx-define cid-char (any "A-Z" "a-z" "0-9"))
+
+(rx-define cid-v0
+  (seq (repeat 46 cid-char)))
+
+(rx-define cid-v0-strict
+  (seq bos (eval cid--v0-prefix-chars) (one-or-more cid-char) eos))
+
+(defvar cid--v0-prefix-chars "Qm"
+  "Characters a CIDv0 must start with.  `rx-define' evaluates at expansion time.")
+
+(rx-define cid-v1-ambiguous
+  (any "0" "O" "I" "l"))
+
+(rx-define cid-v1-word
+  (seq bos
+       (one-or-more (not (in cid-v1-ambiguous)))
+       eos))
+
+(defconst cid--thing-char-class "A-Za-z0-9"
+  "Character class for skipping to CID boundaries.
+Used by `cid--bounds' for `skip-chars-forward/backward'.")
 
 
 ;;; Base58 decoding
@@ -686,26 +711,36 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
 Handles both CIDv0 (Qm...) and CIDv1 (multibase prefix)."
   (let ((p (point)))
     (save-excursion
-      (skip-chars-backward "A-Za-z0-9")
+      (skip-chars-backward cid--thing-char-class)
       (let ((start (point))
             end)
         (goto-char p)
-        (skip-chars-forward "A-Za-z0-9")
+        (skip-chars-forward cid--thing-char-class)
         (setq end (point))
         (when (> end start)
           (let ((word (buffer-substring-no-properties start end)))
             (when (or
-                   ;; CIDv0: exactly 46 chars, starts with Qm
-                   (and (= (length word) 46)
-                        (string-prefix-p "Qm" word)
-                        (string-match-p "\\`[A-Za-z0-9]+\\'" word))
-                   ;; CIDv1: starts with known multibase prefix
-                   (and (>= (length word) 3)
-                        (assq (aref word 0) cid--multibase-prefixes)
-                        (string-match-p "\\`[A-Za-z0-9]+\\'" word)
+                   ;; CIDv0: starts with Qm, exactly 46 base58 chars
+                   (and (string-prefix-p cid--v0-prefix-chars word)
+                        (string-match-p (rx cid-v0) word))
+                   ;; CIDv1: starts with known multibase prefix,
+                   ;; no chars ambiguous in base58 (0, O, I, l)
+                   (and (assq (aref word 0) cid--multibase-prefixes)
+                        (>= (length word) 3)
+                        (string-match-p (rx (seq bos (one-or-more cid-char) eos))
+                                        word)
                         (not (let ((case-fold-search nil))
-                               (string-match-p "[0OIl]" word)))))
+                               (string-match-p (rx cid-v1-ambiguous) word)))))
               (cons start end))))))))
+
+(defun cid--thing-at-point ()
+  "Return the CID string at point, or nil.
+For `thing-at-point' integration."
+  (when-let* ((bounds (cid--bounds)))
+    (buffer-substring-no-properties (car bounds) (cdr bounds))))
+
+(put 'cid 'bounds-of-thing-at-point #'cid--bounds)
+(put 'cid 'thing-at-point #'cid--thing-at-point)
 
 
 ;;; Bookmarks

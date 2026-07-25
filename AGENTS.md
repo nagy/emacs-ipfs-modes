@@ -11,9 +11,9 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~738 lines) |
+| `cid-mode.el` | CID decoder major mode (~773 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
-| `cid-tests.el` | ERT test suite (~470 lines, 57 tests) |
+| `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
 | `default.nix` | Nix build with `melpaBuild` |
 | `shell.nix` | Nix dev shell with Emacs and dependencies |
 
@@ -24,11 +24,13 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 | Emacs 30.1 | yes | `cl-defstruct`, `string-replace`, `defvar-keymap` |
 | browse-url | built-in | `cid-open-gateway` opens the CID on an IPFS gateway |
 | bookmark | built-in | `cid-bookmark-jump`, `cid--bookmark-make-record` |
+| rx | built-in | `rx-define` for CID pattern matching |
+| thingatpt | built-in | `thing-at-point` integration for `cid` type |
 | ol (org) | soft | Org link support via `ol-cid.el` (opt-in load) |
 
 ## Architecture
 
-### `cid-mode.el` (~738 lines)
+### `cid-mode.el` (~773 lines)
 
 The mode is organized into these sections:
 
@@ -36,20 +38,23 @@ The mode is organized into these sections:
 2. **Constants** — Multibase, multicodec, and multihash tables
    (canonical names from the `go-multicodec` / `go-multibase` tables
    vendored in the IPFS Kubo source)
-3. **Encoding decoders** — base58btc, base32 (lower/upper/nopad), base16
-4. **Encoding encoders** — base58btc, base32 (for conversion display)
-5. **Varint decoder** — unsigned LEB128 used by CID framing
-6. **Lookup helpers & conversion** — codec name/description,
+3. **Rx patterns** — `cid-char`, `cid-v0`, `cid-v0-strict`,
+   `cid-v1-ambiguous`, `cid-v1-word` (compiled `rx-define` patterns
+   for CID detection; avoids inline regex strings in `string-match-p`)
+4. **Encoding decoders** — base58btc, base32 (lower/upper/nopad), base16
+5. **Encoding encoders** — base58btc, base32 (for conversion display)
+6. **Varint decoder** — unsigned LEB128 used by CID framing
+7. **Lookup helpers & conversion** — codec name/description,
    multihash name/size, multibase name, `cid--cidv0-to-v1`,
    `cid--cidv1-to-v0`
-7. **CID parsing** — `cid-info` struct, `cid--decode-base`,
+8. **CID parsing** — `cid-info` struct, `cid--decode-base`,
    `cid--detect-prefix`, `cid--parse-v0`, `cid--parse-v1`
-8. **Display** — summary line (like cid.ipfs.tech), Identity section
+9. **Display** — summary line (like cid.ipfs.tech), Identity section
    with codec description, Multihash section with bits and digest in
    base58btc, Sizes section, Raw Bytes hex dump, CIDv0↔v1 conversion
-9. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
-   `cid-copy-cid`, `cid-open-gateway`
-10. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
+10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
+    `cid-copy-cid`, `cid-open-gateway`
+11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
 
 ### `ol-cid.el` (~90 lines)
 
@@ -142,7 +147,7 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 ## Testing
 
 ```bash
-# Run the full test suite (57 tests):
+# Run the full test suite (61 tests):
 emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
 
 # Smoke test decode commands:
@@ -195,6 +200,8 @@ Required built-in packages come first, alphabetically, followed by
 ```elisp
 (require 'bookmark)
 (require 'cl-lib)
+(require 'rx)
+(require 'thingatpt)
 ```
 
 ### Derive from `special-mode`
@@ -222,10 +229,26 @@ errors.
 
 ### `cid-decode-at-point`
 
-Uses `skip-chars-forward/backward` and pattern matching to find CIDs
-in any buffer.  CIDv0 detection is strict (exactly 46 chars starting
-with `Qm`); CIDv1 detects any word starting with a known multibase
-prefix, excluding characters ambiguous in base58 (`0`, `O`, `I`, `l`).
+Uses `skip-chars-forward/backward` and `rx`-compiled patterns to find
+CIDs in any buffer.  CIDv0 detection is strict (exactly 46 base58
+chars starting with `Qm`); CIDv1 detects any word starting with a
+known multibase prefix, excluding characters ambiguous in base58
+(`0`, `O`, `I`, `l`).  The `rx` patterns are defined once at
+compile time with `rx-define` and referenced via `(rx cid-v0)` etc.,
+avoiding inline regex strings in `string-match-p`.
+
+### `thing-at-point` integration
+
+`cid-mode.el` registers a `cid` thing type via:
+
+```elisp
+(put 'cid 'bounds-of-thing-at-point #'cid--bounds)
+(put 'cid 'thing-at-point #'cid--thing-at-point)
+```
+
+This lets `(thing-at-point 'cid)` and `(bounds-of-thing-at-point 'cid)`
+work in any buffer, not just `cid-mode` buffers.  `cid--thing-at-point`
+wraps `cid--bounds` with `when-let*` and extracts the string.
 
 ### `ol-cid` is opt-in
 
@@ -279,15 +302,19 @@ outer scope — later bindings cannot reference earlier ones.  Use
 
 `string-match-p` defaults to case-insensitive matching.  When matching
 against a specific set of characters that includes letters, bind
-`case-fold-search` to nil to avoid false positives:
+`case-fold-search` to nil to avoid false positives.  The ambiguous
+characters are defined once as an `rx-define` pattern:
 
 ```elisp
+(rx-define cid-v1-ambiguous
+  (any "0" "O" "I" "l"))
+
 ;; Wrong — also matches lowercase i and l (because I and l match)
 (not (string-match-p "[0OIl]" word))
 
 ;; Correct
 (not (let ((case-fold-search nil))
-       (string-match-p "[0OIl]" word)))
+       (string-match-p (rx cid-v1-ambiguous) word)))
 ```
 
 ### Display rendering
