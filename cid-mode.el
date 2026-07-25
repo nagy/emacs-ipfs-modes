@@ -84,6 +84,14 @@ ipfs.io.  Used by `cid-open-gateway' to open a CID in a browser."
   "Face for field labels (CID, Version, Multibase, etc.)."
   :group 'cid)
 
+(defcustom cid-decode-hook nil
+  "Hook run after a CID buffer is fully rendered.
+The buffer is current and `cid--info' is set when this hook runs.
+Use this to modify the buffer after `cid-decode' finishes — unlike
+`cid-mode-hook', `cid--info' is available here."
+  :type 'hook
+  :group 'cid)
+
 (defcustom cid-hex-bytes-per-line 16
   "Number of hex bytes to show per line in the raw bytes dump."
   :type 'integer
@@ -575,6 +583,7 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
     (with-current-buffer buf
       (erase-buffer)
       (cid-mode)
+      (setq-local default-directory temporary-file-directory)
       (setq cid--info info)
 
       (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
@@ -646,7 +655,8 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
           (insert "  " (propertize err 'face 'warning) "\n")))
 
       (goto-char (point-min))
-      (set-buffer-modified-p nil))
+      (set-buffer-modified-p nil)
+      (run-hooks 'cid-decode-hook))
     (pop-to-buffer buf)))
 
 (defun cid--insert-header (cid-string version)

@@ -385,6 +385,23 @@ Faces are defined as `defface` rather than inline `:inherit` props:
 - `cid-field-face` — inherits `font-lock-type-face`; used for field
   labels (CID, Version, Multibase, etc.)
 
+### `cid-decode-hook`
+
+`cid-decode-hook` runs after a CID buffer is fully rendered, with
+`cid--info` set.  Unlike `cid-mode-hook`, which fires during mode
+initialization before `cid--info` is available, this hook lets you
+modify the buffer based on the parsed CID data:
+
+```elisp
+(add-hook 'cid-decode-hook
+  (lambda () (message "Decoded: %s" (cid-info-cid-string cid--info))))
+```
+
+### Buffer directory
+
+CID buffers set `default-directory` to `temporary-file-directory`
+instead of inheriting the user's current directory.
+
 ## TODO
 
 - **`cl-labels` for display helpers** — move the five `cid--insert-*`
