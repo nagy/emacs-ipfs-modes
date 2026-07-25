@@ -5,14 +5,17 @@
 Emacs package for working with IPFS data from within Emacs.  The
 initial offering is `cid-mode`, a major mode for decoding and
 browsing IPFS Content Identifiers (CIDs), similar to the online tool
-at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
+at <https://cid.ipfs.tech/>.  Also includes Org link support
+(`ol-cid.el`), Embark actions (`embark-cid.el`), and `ipfs://`/
+`ipns://` URL scheme handlers.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~773 lines) |
+| `cid-mode.el` | CID decoder major mode (~794 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
+| `embark-cid.el` | Embark target finder and actions for CIDs (~83 lines) |
 | `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
 | `default.nix` | Nix build with `melpaBuild` |
 | `shell.nix` | Nix dev shell with Emacs and dependencies |
@@ -27,10 +30,11 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 | rx | built-in | `rx-define` for CID pattern matching |
 | thingatpt | built-in | `thing-at-point` integration for `cid` type |
 | ol (org) | soft | Org link support via `ol-cid.el` (opt-in load) |
+| embark | soft | Embark actions via `embark-cid.el` (opt-in load) |
 
 ## Architecture
 
-### `cid-mode.el` (~773 lines)
+### `cid-mode.el` (~794 lines)
 
 The mode is organized into these sections:
 
@@ -55,6 +59,8 @@ The mode is organized into these sections:
 10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
     `cid-copy-cid`, `cid-open-gateway`
 11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
+12. **URL scheme handlers** — `cid--browse-ipfs` registers `ipfs://`
+    and `ipns://` handlers via `browse-url-default-handlers`
 
 ### `ol-cid.el` (~90 lines)
 
@@ -68,6 +74,17 @@ Opt-in Org link module.  Defines the `cid:` link type:
   `cid-mode` buffer (`C-c l`)
 - **Export** (`cid-org-export`) — renders as an IPFS gateway URL in
   HTML/LaTeX
+
+### `embark-cid.el` (~83 lines)
+
+Opt-in Embark module.  Registers `ipfs-cid` as a target type:
+
+- **Target finder** (`embark-cid-target-at-point`) — delegates to
+  `cid--bounds`, returns `(ipfs-cid CID START . END)`
+- **Actions** — `RET` (decode in `cid-mode`), `w` (copy to kill ring),
+  `b` (open on IPFS gateway)
+
+Loaded by user with `(require 'embark-cid)`.
 
 Loaded by `cid-mode.el` via deferred `with-eval-after-load` (no-op if
 ol-cid.el is not installed).  Users can also activate it manually:
@@ -132,6 +149,7 @@ nix-build -E "with import <nixpkgs> {}; (emacs.pkgs.callPackage ./. {})"
 # Without Nix
 emacs -Q --batch -f batch-byte-compile cid-mode.el
 emacs -Q --batch -L . -f batch-byte-compile ol-cid.el
+emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
 ```
 
 Byte-compile with warnings as errors (wired into the Nix build
@@ -142,6 +160,8 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
   -f batch-byte-compile cid-mode.el
 emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
   -L . -f batch-byte-compile ol-cid.el
+emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
+  -L . -f batch-byte-compile embark-cid.el
 ```
 
 ## Testing
@@ -173,6 +193,15 @@ emacs -Q --batch -L . -l cid-mode.el \
 | `b` | `cid-open-gateway` | Open CID on IPFS gateway |
 | `q` | `quit-window` | Close the CID buffer (inherited from `special-mode-map`) |
 
+### Embark keybindings (`embark-cid-map`)
+
+| Key | Command | Description |
+|---|---|---|
+| `RET` | `embark-cid-decode` | Decode CID in `cid-mode` buffer |
+| `w` | `embark-cid-copy` | Copy CID to kill ring |
+| `b` | `embark-cid-open-gateway` | Open CID on IPFS gateway |
+
+## Conventions
 ## Conventions
 
 ### `defvar-keymap` with `:parent`
@@ -199,6 +228,7 @@ Required built-in packages come first, alphabetically, followed by
 
 ```elisp
 (require 'bookmark)
+(require 'browse-url)
 (require 'cl-lib)
 (require 'rx)
 (require 'thingatpt)
@@ -249,6 +279,26 @@ avoiding inline regex strings in `string-match-p`.
 This lets `(thing-at-point 'cid)` and `(bounds-of-thing-at-point 'cid)`
 work in any buffer, not just `cid-mode` buffers.  `cid--thing-at-point`
 wraps `cid--bounds` with `when-let*` and extracts the string.
+
+### `browse-url` scheme handlers
+
+The `ipfs://` and `ipns://` URL schemes are registered in
+`browse-url-default-handlers` (not the user-reserved
+`browse-url-handlers`).  The handler `cid--browse-ipfs` extracts
+the CID or IPNS name and opens it on the configured gateway.
+Registered via `with-eval-after-load 'browse-url` so it only
+activates when `browse-url` is actually loaded.
+
+### Gateway fallback
+
+`cid-gateway-url` is resolved in this order:
+
+1. The `cid-gateway-url` defcustom value
+2. The `IPFS_GATEWAY` environment variable
+3. `https://ipfs.io` (hardcoded default)
+
+Embark actions and the `ipfs://`/`ipns://` URL handler both
+use `cid-gateway-url` as their gateway.
 
 ### `ol-cid` is opt-in
 

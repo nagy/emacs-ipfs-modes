@@ -1,0 +1,82 @@
+;;; embark-cid.el --- Embark actions for IPFS Content Identifiers  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026  Daniel Nagy
+
+;; Author: Daniel Nagy
+;; Version: 0.1.0
+;; Keywords: tools, ipfs
+;; Package-Requires: ((emacs "30.1") (embark "1.0"))
+;; URL: https://github.com/nagy/emacs-ipfs-modes
+
+;; This file is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as
+;; published by the Free Software Foundation, either version 3 of the
+;; License, or (at your option) any later version.
+
+;; This file is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public
+;; License along with this file.  If not, see
+;; <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; Embark integration for CID actions.  When point is on a CID,
+;; `embark-act' offers actions: decode, copy, open on gateway.
+;;
+;; This module is opt-in:
+;;
+;;   (require 'embark-cid)
+
+;;; Code:
+
+(declare-function cid--bounds "cid-mode")
+(declare-function cid-decode "cid-mode")
+(defvar cid-gateway-url)
+(defvar embark-keymap-alist)
+(defvar embark-target-finders)
+
+;;; Target finder and actions
+
+(defun embark-cid-target-at-point ()
+  "Target a CID at point for Embark."
+  (when-let* ((bounds (cid--bounds))
+              (cid-str (buffer-substring-no-properties
+                        (car bounds) (cdr bounds))))
+    `(ipfs-cid ,cid-str ,(car bounds) . ,(cdr bounds))))
+
+(defun embark-cid-decode (cid)
+  "Open a CID decoding buffer for CID."
+  (interactive "sCID: ")
+  (cid-decode cid))
+
+(defun embark-cid-copy (cid)
+  "Copy CID to the kill ring."
+  (interactive "sCID: ")
+  (kill-new cid)
+  (message "Copied: %s" cid))
+
+(defun embark-cid-open-gateway (cid)
+  "Open CID on the configured IPFS gateway."
+  (interactive "sCID: ")
+  (browse-url (format "%s/ipfs/%s" cid-gateway-url cid)))
+
+(defvar-keymap embark-cid-map
+  :doc "Keymap for Embark CID actions."
+  :parent nil
+  "RET" #'embark-cid-decode
+  "w"   #'embark-cid-copy
+  "b"   #'embark-cid-open-gateway)
+
+;;; Register with Embark (deferred until Embark is loaded)
+
+;;;###autoload
+(with-eval-after-load 'embark
+  (add-hook 'embark-target-finders #'embark-cid-target-at-point)
+  (add-to-list 'embark-keymap-alist '(ipfs-cid . embark-cid-map)))
+
+(provide 'embark-cid)
+;;; embark-cid.el ends here

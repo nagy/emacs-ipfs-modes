@@ -47,6 +47,7 @@
 ;;; Code:
 
 (require 'bookmark)
+(require 'browse-url)
 (require 'cl-lib)
 (require 'rx)
 (require 'thingatpt)
@@ -60,9 +61,11 @@
   :prefix "cid-"
   :link '(url-link :tag "Repository" "https://github.com/nagy/emacs-ipfs-modes"))
 
-(defcustom cid-gateway-url "https://ipfs.io"
+(defcustom cid-gateway-url
+  (or (getenv "IPFS_GATEWAY") "https://ipfs.io")
   "IPFS gateway URL for resolving CIDs.
-Used by `cid-gateway-url' command to open a CID in a browser."
+Falls back to the IPFS_GATEWAY environment variable, then to
+ipfs.io.  Used by `cid-open-gateway' to open a CID in a browser."
   :type 'string
   :group 'cid)
 
@@ -768,6 +771,24 @@ For `thing-at-point' integration."
 ;; Org is loaded.
 (with-eval-after-load 'org
   (require 'ol-cid nil t))  ; nil means no error if ol-cid is missing
+
+;;; URL scheme handlers (ipfs:// and ipns://)
+
+(defun cid--browse-ipfs (url &rest _)
+  "Browse an ipfs:// or ipns:// URL.
+Extracts the CID or IPNS name from URL and opens it on
+the configured IPFS gateway."
+  (string-match "\\`\\(ipfs\\|ipns\\)://\\(.+\\)" url)
+  (let ((scheme (match-string 1 url))
+        (content (match-string 2 url)))
+    (browse-url (format "%s/%s/%s" cid-gateway-url scheme content))))
+
+;;;###autoload
+(with-eval-after-load 'browse-url
+  (add-to-list 'browse-url-default-handlers
+               (cons "\\`ipfs://" #'cid--browse-ipfs))
+  (add-to-list 'browse-url-default-handlers
+               (cons "\\`ipns://" #'cid--browse-ipfs)))
 
 (provide 'cid-mode)
 ;;; cid-mode.el ends here
