@@ -224,8 +224,13 @@
   "Multibase prefix characters resolve to names."
   (should (equal (cid--multibase-name ?z) "base58btc"))
   (should (equal (cid--multibase-name ?b) "base32"))
-  (should (equal (cid--multibase-name ?B) "base32"))
+  (should (equal (cid--multibase-name ?B) "base32upper"))
   (should (equal (cid--multibase-name ?f) "base16"))
+  (should (equal (cid--multibase-name ?F) "base16upper"))
+  (should (equal (cid--multibase-name ?c) "base32pad"))
+  (should (equal (cid--multibase-name ?C) "base32padupper"))
+  (should (equal (cid--multibase-name ?m) "base64"))
+  (should (equal (cid--multibase-name ?u) "base64url"))
   ;; Unknown prefix returns nil.
   (should-not (cid--multibase-name ?x)))
 

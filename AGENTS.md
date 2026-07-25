@@ -11,7 +11,7 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~622 lines) |
+| `cid-mode.el` | CID decoder major mode (~738 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
 | `cid-tests.el` | ERT test suite (~470 lines, 57 tests) |
 | `default.nix` | Nix build with `melpaBuild` |
@@ -28,19 +28,28 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 
 ## Architecture
 
-### `cid-mode.el` (~622 lines)
+### `cid-mode.el` (~738 lines)
 
 The mode is organized into these sections:
 
 1. **Customization** — `defgroup cid`, `cid-gateway-url`, `cid-hex-bytes-per-line`
 2. **Constants** — Multibase, multicodec, and multihash tables
+   (canonical names from the `go-multicodec` / `go-multibase` tables
+   vendored in the IPFS Kubo source)
 3. **Encoding decoders** — base58btc, base32 (lower/upper/nopad), base16
-4. **Varint decoder** — unsigned LEB128 used by CID framing
-5. **Lookup helpers** — codec name, multihash name/size, multibase name
-6. **CID parsing** — `cid-info` struct, `cid--decode-base`, `cid--detect-prefix`, `cid--parse-v0`, `cid--parse-v1`
-7. **Display** — `cid-mode` (derived from `special-mode`), `cid--display` renders the decoded CID
-8. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`, `cid-copy-cid`, `cid-open-gateway`
-9. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
+4. **Encoding encoders** — base58btc, base32 (for conversion display)
+5. **Varint decoder** — unsigned LEB128 used by CID framing
+6. **Lookup helpers & conversion** — codec name/description,
+   multihash name/size, multibase name, `cid--cidv0-to-v1`,
+   `cid--cidv1-to-v0`
+7. **CID parsing** — `cid-info` struct, `cid--decode-base`,
+   `cid--detect-prefix`, `cid--parse-v0`, `cid--parse-v1`
+8. **Display** — summary line (like cid.ipfs.tech), Identity section
+   with codec description, Multihash section with bits and digest in
+   base58btc, Sizes section, Raw Bytes hex dump, CIDv0↔v1 conversion
+9. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
+   `cid-copy-cid`, `cid-open-gateway`
+10. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
 
 ### `ol-cid.el` (~90 lines)
 
@@ -83,6 +92,12 @@ CID string
     → extract digest bytes
   → cid-info struct
   → cid--display (render in cid-mode buffer)
+    → summary line
+    → identity + codec description
+    → multihash + digest (hex + base58btc) + bits
+    → sizes (CID string bytes, binary bytes)
+    → raw bytes hex dump
+    → CIDv0→v1 or v1→v0 conversion
 ```
 
 ### CIDv0 specifics
@@ -94,7 +109,10 @@ CID string
 
 ### CIDv1 specifics
 
-- CIDv1 strings start with a multibase prefix character (`z`, `b`, `B`, `c`, `C`, `f`, `F`).
+- CIDv1 strings start with a multibase prefix character
+  (`z`=base58btc, `b`=base32, `B`=base32upper, `c`=base32pad,
+  `C`=base32padupper, `f`=base16, `F`=base16upper, `m`=base64,
+  `u`=base64url, `M`=base64pad, `U`=base64urlpad).
 - Raw bytes: `[version-varint] [codec-varint] [multihash...]`.
 - Version varint should be `1` (0x01).
 - Codec varint identifies the content type (dag-pb, dag-cbor, raw, etc.).

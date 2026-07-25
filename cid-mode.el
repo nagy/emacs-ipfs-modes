@@ -84,33 +84,41 @@ Used by `cid-gateway-url' command to open a CID in a browser."
 
 (defconst cid--multibase-prefixes
   '(;; prefix . (name . decoder-symbol)
+    ;; Names match the canonical go-multibase EncodingToStr table.
     (?f . ("base16" . lower-hex))
-    (?F . ("base16" . upper-hex))
+    (?F . ("base16upper" . upper-hex))
     (?b . ("base32" . lower))
-    (?B . ("base32" . upper))
-    (?c . ("base32" . lower-nopad))
-    (?C . ("base32" . upper-nopad))
+    (?B . ("base32upper" . upper))
+    (?c . ("base32pad" . lower-nopad))
+    (?C . ("base32padupper" . upper-nopad))
     (?z . ("base58btc" . base58))
-    (?m . ("base64url" . base64url))
-    (?u . ("base64" . base64))
-    (?U . ("base64pad" . base64)))
-  "Multibase prefixes and their encoding names.")
+    (?Z . ("base58flickr" . base58))
+    (?m . ("base64" . base64url))
+    (?u . ("base64url" . base64url))
+    (?M . ("base64pad" . base64url))
+    (?U . ("base64urlpad" . base64url)))
+  "Multibase prefixes and their encoding names.
+Names match the canonical go-multibase table from the IPFS Kubo source.
+The decoder-symbol indicates the internal decoder: lower-hex, upper-hex,
+lower, upper, lower-nopad, upper-nopad, base58, or base64url.")
 
 (defconst cid--codec-table
-  '((#x55   . "raw")
-    (#x70   . "dag-pb")
-    (#x71   . "dag-cbor")
-    (#x0129 . "dag-json")
-    (#x0120 . "libp2p-key")
-    (#x01ce . "json")
-    (#x0202 . "cbor")
-    (#x01b0 . "car")
-    (#x01b1 . "car-index-sorted")
-    (#x01e0 . "fil-commitment-unsealed")
-    (#x01e1 . "fil-commitment-sealed")
-    (#x03   . "git-raw")
-    (#x00   . "identity"))
-  "Known multicodec codes (code . name).")
+  '((#x55   . ("raw" . "raw binary"))
+    (#x70   . ("dag-pb" . "MerkleDAG protobuf"))
+    (#x71   . ("dag-cbor" . "MerkleDAG cbor"))
+    (#x0129 . ("dag-json" . "MerkleDAG json"))
+    (#x0120 . ("libp2p-key" . "Libp2p Public Key"))
+    (#x01ce . ("json" . "JSON (UTF-8-encoded)"))
+    (#x0202 . ("cbor" . "CBOR"))
+    (#x01b0 . ("car" . nil))
+    (#x01b1 . ("car-index-sorted" . nil))
+    (#x01e0 . ("fil-commitment-unsealed" . nil))
+    (#x01e1 . ("fil-commitment-sealed" . nil))
+    (#x78   . ("git-raw" . "Raw Git object"))
+    (#x00   . ("identity" . "raw binary")))
+  "Known multicodec codes ((code . (name . description))).
+Names and descriptions from the canonical go-multicodec table
+in the IPFS Kubo source.")
 
 (defconst cid--multihash-table
   '((#x00   . ("identity"    . 0))
@@ -123,14 +131,17 @@ Used by `cid-gateway-url' command to open a CID in a browser."
     (#x17   . ("sha3-224"    . 28))
     (#x18   . ("shake-128"   . 32))
     (#x19   . ("shake-256"   . 64))
-    (#x1a   . ("keccak-512"  . 64))
+    (#x1a   . ("keccak-224"  . 28))
     (#x1b   . ("keccak-256"  . 32))
-    (#xb201 . ("blake2b-256" . 32))
-    (#xb202 . ("blake2b-512" . 64))
-    (#xb220 . ("blake3-256"  . 32))
-    (#xb222 . ("blake3-512"  . 64)))
+    (#x1c   . ("keccak-384"  . 48))
+    (#x1d   . ("keccak-512"  . 64))
+    (#x1e   . ("blake3"      . 32))
+    (#xb220 . ("blake2b-256" . 32))
+    (#xb240 . ("blake2b-512" . 64)))
   "Known multihash codes ((code . (name . digest-size))).
-Digest-size is the expected length in bytes, or 0 for variable.")
+Codes and names from the canonical go-multicodec table in the
+IPFS Kubo source.  Digest-size is the expected length in bytes,
+or 0 for variable.")
 
 
 ;;; Base58 decoding
@@ -191,6 +202,38 @@ Returns a byte vector, or nil on invalid input."
     (when result
       (vconcat (nreverse result)))))
 
+(defun cid--base32-encode (bytes)
+  "Encode BYTES to a base32 lowercase string (no padding)."
+  (declare (side-effect-free t))
+  (let* ((alphabet cid--base32-lower-alphabet)
+         (result nil)
+         (bits 0)
+         (bit-count 0))
+    (dotimes (i (length bytes))
+      (setq bits (logior (ash bits 8) (aref bytes i))
+            bit-count (+ bit-count 8))
+      (while (>= bit-count 5)
+        (push (aref alphabet (logand (ash bits (- 5 bit-count)) #x1f)) result)
+        (setq bit-count (- bit-count 5))))
+    (when (> bit-count 0)
+      (push (aref alphabet (logand (ash bits (- 5 bit-count)) #x1f)) result))
+    (concat (nreverse result))))
+
+(defun cid--base58-encode (bytes)
+  "Encode BYTES to a base58btc string."
+  (declare (side-effect-free t))
+  (let ((alphabet cid--base58-alphabet)
+        (n 0))
+    (dolist (b (append bytes nil))
+      (setq n (+ (* n 256) b)))
+    (if (zerop n)
+        ""
+      (let ((result nil))
+        (while (> n 0)
+          (push (aref alphabet (% n 58)) result)
+          (setq n (/ n 58)))
+        (concat result)))))
+
 (defun cid--base16-decode (str)
   "Decode hex STR (lower or upper case) to a byte vector."
   (declare (side-effect-free t))
@@ -228,8 +271,15 @@ Returns (VALUE . NEW-POS) or nil if there aren't enough bytes."
 (defun cid--lookup-codec (code)
   "Return the name of multicodec CODE, or a hex string if unknown."
   (declare (side-effect-free t))
-  (or (cdr (assq code cid--codec-table))
-      (format "0x%x (unknown)" code)))
+  (let ((entry (assq code cid--codec-table)))
+    (if entry
+        (cadr entry)
+      (format "0x%x (unknown)" code))))
+
+(defun cid--codec-description (code)
+  "Return the description of multicodec CODE, or nil."
+  (declare (side-effect-free t))
+  (cddr (assq code cid--codec-table)))
 
 (defun cid--lookup-multihash (code)
   "Return (NAME . EXPECTED-SIZE) for multihash CODE, or nil if unknown."
@@ -245,6 +295,25 @@ Returns (VALUE . NEW-POS) or nil if there aren't enough bytes."
   "Return lowercase hex string for BYTES (vector or list)."
   (declare (side-effect-free t))
   (mapconcat (lambda (b) (format "%02x" b)) (append bytes nil) ""))
+
+(defun cid--cidv1-to-v0 (info)
+  "Return the CIDv0 string equivalent of a dag-pb sha2-256 CIDv1 INFO, or nil.
+CIDv0 is only valid for dag-pb + sha2-256 CIDs."
+  (declare (side-effect-free t))
+  (when (and (= (cid-info-version info) 1)
+             (= (cid-info-codec-code info) #x70)   ; dag-pb
+             (= (cid-info-multihash-code info) #x12) ; sha2-256
+             (cid-info-digest info))
+    (cid--base58-encode (vconcat [ #x12 #x20 ] (cid-info-digest info)))))
+
+(defun cid--cidv0-to-v1 (info)
+  "Return the CIDv1 base32 string equivalent of a CIDv0 INFO.
+CIDv0 is always dag-pb + sha2-256, so the conversion is unambiguous."
+  (declare (side-effect-free t))
+  (when (= (cid-info-version info) 0)
+    (let* ((raw (cid-info-raw-bytes info))
+           (v1-raw (vconcat [ #x01 #x70 ] raw)))
+      (concat "b" (cid--base32-encode v1-raw)))))
 
 
 ;;; CID info struct
@@ -439,6 +508,22 @@ Use `M-x cid-decode' to decode a CID."
   (setq-local revert-buffer-function #'cid-revert)
   (setq-local bookmark-make-record-function #'cid--bookmark-make-record))
 
+(defun cid--insert-summary (info)
+  "Insert a one-line human-readable CID summary for INFO.
+Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
+  (insert (propertize
+           (format "%s - cidv%d - %s - (%s : %d : %s)"
+                   (cid-info-multibase info)
+                   (cid-info-version info)
+                   (cid-info-codec info)
+                   (cid-info-multihash-name info)
+                   (* 8 (cid-info-digest-size info))
+                   (if (cid-info-digest info)
+                       (upcase (cid--encode-hex (cid-info-digest info)))
+                     ""))
+           'face '(:inherit shadow))
+          "\n"))
+
 (defun cid--display (info)
   "Display decoded CID INFO in a `cid-mode' buffer."
   (let ((buf (get-buffer-create
@@ -452,6 +537,10 @@ Use `M-x cid-decode' to decode a CID."
       (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
       (insert "\n")
 
+      ;; Summary line (like cid.ipfs.tech)
+      (cid--insert-summary info)
+      (insert "\n")
+
       ;; General info section
       (cid--insert-section "Identity")
       (cid--insert-field "CID" (cid-info-cid-string info))
@@ -459,6 +548,8 @@ Use `M-x cid-decode' to decode a CID."
       (cid--insert-field "Multibase" (cid-info-multibase info))
       (cid--insert-field "Codec" (cid-info-codec info))
       (cid--insert-value (format "[0x%x]" (cid-info-codec-code info)))
+      (when-let* ((desc (cid--codec-description (cid-info-codec-code info))))
+        (cid--insert-value desc))
       (insert "\n")
 
       ;; Multihash section
@@ -468,16 +559,40 @@ Use `M-x cid-decode' to decode a CID."
                                  (format " [0x%x]"
                                          (cid-info-multihash-code info))))
       (cid--insert-field "Digest Size"
-                         (format "%d bytes" (cid-info-digest-size info)))
+                         (format "%d bytes / %d bits"
+                                 (cid-info-digest-size info)
+                                 (* 8 (cid-info-digest-size info))))
       (when-let* ((digest (cid-info-digest info)))
-        (cid--insert-field "Digest (hex)" (cid--encode-hex digest)))
+        (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
+        ;; Digest re-encoded in base58btc (the most portable multibase).
+        (cid--insert-field "Digest (base58btc)"
+                           (cid--base58-encode digest)))
+      (insert "\n")
+
+      ;; CID byte lengths
+      (cid--insert-section "Sizes")
+      (cid--insert-field "CID string" (format "%d bytes" (length (cid-info-cid-string info))))
+      (cid--insert-field "Binary"
+                         (format "%d bytes" (length (cid-info-raw-bytes info))))
       (insert "\n")
 
       ;; Raw bytes section
       (cid--insert-section "Raw Bytes")
-      (cid--insert-field "Total size"
-                         (format "%d bytes" (length (cid-info-raw-bytes info))))
       (cid--insert-hex-dump (cid-info-raw-bytes info))
+
+      ;; CID version conversion
+      (when-let* ((v0 (if (= (cid-info-version info) 1)
+                          (cid--cidv1-to-v0 info)
+                        nil)))
+        (insert "\n")
+        (cid--insert-section "CIDv0 Equivalent")
+        (cid--insert-field "CIDv0" v0))
+      (when-let* ((v1 (if (= (cid-info-version info) 0)
+                          (cid--cidv0-to-v1 info)
+                        nil)))
+        (insert "\n")
+        (cid--insert-section "CIDv1 Equivalent")
+        (cid--insert-field "CIDv1 (base32)" v1))
 
       ;; Warnings
       (when-let* ((errors (cid-info-errors info))
