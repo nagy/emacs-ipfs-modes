@@ -8,7 +8,7 @@
 
 melpaBuild {
   pname = "cid-mode";
-  version = "0.1.0-unstable-2026-07-08";
+  version = "0.1.0-unstable-2026-07-25";
 
   src = lib.cleanSource ./.;
 

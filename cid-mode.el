@@ -196,7 +196,7 @@ Returns a byte vector, or nil on invalid input."
   (declare (side-effect-free t))
   (let ((len (length str))
         (result nil))
-    (when (evenp len)
+    (when (cl-evenp len)
       (dotimes (i (/ len 2))
         (push (string-to-number (substring str (* i 2) (+ (* i 2) 2)) 16)
               result))

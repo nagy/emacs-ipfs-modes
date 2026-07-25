@@ -13,6 +13,7 @@ at <https://cid.ipfs.tech/>.  Org link support via `ol-cid.el`.
 |---|---|
 | `cid-mode.el` | CID decoder major mode (~622 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
+| `cid-tests.el` | ERT test suite (~470 lines, 57 tests) |
 | `default.nix` | Nix build with `melpaBuild` |
 | `shell.nix` | Nix dev shell with Emacs and dependencies |
 
@@ -123,11 +124,22 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 ## Testing
 
 ```bash
+# Run the full test suite (57 tests):
+emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
+
+# Smoke test decode commands:
 emacs -Q --batch -L . -l cid-mode.el \
   --eval '(cid-decode "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco")' \
   --eval '(cid-decode "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")' \
   --eval '(message "All decodes OK")'
 ```
+
+### Test vectors
+
+| Vector | Type | Description |
+|---|---|---|
+| `QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T` | CIDv0 | Big Buck Bunny, sha2-256, dag-pb |
+| `bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi` | CIDv1 | base32 lowercase nopad, sha2-256, dag-pb |
 
 ## Keybindings
 
@@ -222,6 +234,21 @@ clobbering the real value:
 ```elisp
 (declare-function cid-decode "cid-mode")
 (defvar cid--info)
+```
+
+### `cl-lib` prefix for Emacs functions
+
+Use the `cl-` prefixed form of standard Emacs functions that have a
+`cl-lib` alias.  `melpaBuild`'s isolated compilation environment does
+not resolve unprefixed forms like `evenp` from `cl-extra`, even when
+`cl-lib` is required.  Use `cl-evenp` instead of `evenp`:
+
+```elisp
+;; Wrong — unresolvable in melpaBuild
+(when (evenp len) …)
+
+;; Correct
+(when (cl-evenp len) …)
 ```
 
 ### `let*` for sequential bindings
