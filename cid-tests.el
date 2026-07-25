@@ -408,8 +408,8 @@
 
 (ert-deftest cid-bounds-v1 ()
   "`cid--bounds' finds a CIDv1 at point."
-  ;; Use a clean base32-prefixed string without chars that match the
-  ;; ambiguous-character regex when case-fold-search is t (0, O/o, I/i, l/L).
+  ;; Use a clean base32-prefixed string without characters in the
+  ;; case-sensitive ambiguous set: 0, O, I, l (all four act like 0 in base58).
   (let ((cid "babcdefghjk"))
     (with-temp-buffer
       (insert "prefix " cid " suffix")

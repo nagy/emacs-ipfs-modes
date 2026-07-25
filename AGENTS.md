@@ -257,6 +257,21 @@ In `lexical-binding: t`, plain `let` evaluates all init forms in the
 outer scope — later bindings cannot reference earlier ones.  Use
 `let*` when one binding's init form depends on a prior binding.
 
+### `case-fold-search` for character class matches
+
+`string-match-p` defaults to case-insensitive matching.  When matching
+against a specific set of characters that includes letters, bind
+`case-fold-search` to nil to avoid false positives:
+
+```elisp
+;; Wrong — also matches lowercase i and l (because I and l match)
+(not (string-match-p "[0OIl]" word))
+
+;; Correct
+(not (let ((case-fold-search nil))
+       (string-match-p "[0OIl]" word)))
+```
+
 ### Display rendering
 
 CID display uses `cl-defstruct` accessors throughout `cid--display`,

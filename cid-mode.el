@@ -588,7 +588,8 @@ Handles both CIDv0 (Qm...) and CIDv1 (multibase prefix)."
                    (and (>= (length word) 3)
                         (assq (aref word 0) cid--multibase-prefixes)
                         (string-match-p "\\`[A-Za-z0-9]+\\'" word)
-                        (not (string-match-p "[0OIl]" word))))
+                        (not (let ((case-fold-search nil))
+                               (string-match-p "[0OIl]" word)))))
               (cons start end))))))))
 
 
