@@ -578,7 +578,7 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
 (defun cid--display (info)
   "Display decoded CID INFO in a `cid-mode' buffer."
   (let ((buf (get-buffer-create
-              (format "*CID: %s*" (cid-info-cid-string info))))
+              (format "CID: %s" (cid-info-cid-string info))))
         (inhibit-read-only t))
     (with-current-buffer buf
       (erase-buffer)
