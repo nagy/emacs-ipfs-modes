@@ -12,7 +12,7 @@ melpaBuild {
 
   src = lib.cleanSource ./.;
 
-  packageRequires = [ ];
+  packageRequires = [ emacsPackages.magit-section ];
 
   turnCompilationWarningToError = true;
 

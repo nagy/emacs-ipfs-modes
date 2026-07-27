@@ -5,7 +5,7 @@
 ;; Author: Daniel Nagy
 ;; Version: 0.1.0
 ;; Keywords: tools, ipfs
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "30.1") (magit-section "3.3.0"))
 ;; URL: https://github.com/nagy/emacs-ipfs-modes
 
 ;; This file is free software: you can redistribute it and/or modify
@@ -51,6 +51,7 @@
 (require 'cl-lib)
 (require 'rx)
 (require 'thingatpt)
+(require 'magit-section)
 
 
 ;;; Customization
@@ -543,7 +544,7 @@ expected %d, got %d"
 
 (defvar-keymap cid-mode-map
   :doc "Keymap for `cid-mode' buffers."
-  :parent special-mode-map
+  :parent magit-section-mode-map
   "g" #'cid-revert
   "w" #'cid-copy-cid
   "b" #'cid-open-gateway)
@@ -551,7 +552,7 @@ expected %d, got %d"
 (defvar-local cid--info nil
   "The `cid-info' struct for the current buffer.")
 
-(define-derived-mode cid-mode special-mode "CID"
+(define-derived-mode cid-mode magit-section-mode "CID"
   "Major mode for displaying decoded IPFS Content Identifiers.
 
 \\{cid-mode-map}
@@ -575,6 +576,14 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
            'face '(:inherit shadow))
           "\n"))
 
+(defmacro cid--insert-section (title &rest body)
+  "Insert a magit-section group with TITLE heading and BODY forms."
+  (declare (indent 1))
+  `(magit-insert-section (cid-section ,title)
+     (magit-insert-heading
+       (propertize (concat ,title "\n") 'font-lock-face 'cid-section-face))
+     ,@body
+     (insert "\n")))
 (defun cid--display (info)
   "Display decoded CID INFO in a `cid-mode' buffer."
   (let ((buf (get-buffer-create
@@ -586,73 +595,65 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
       (setq-local default-directory temporary-file-directory)
       (setq cid--info info)
 
-      (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
-      (insert "\n")
-
-      ;; Summary line (like cid.ipfs.tech)
-      (cid--insert-summary info)
-      (insert "\n")
-
-      ;; General info section
-      (cid--insert-section "Identity")
-      (cid--insert-field "CID" (cid-info-cid-string info))
-      (cid--insert-field "Version" (format "CIDv%d" (cid-info-version info)))
-      (cid--insert-field "Multibase" (cid-info-multibase info))
-      (cid--insert-field "Codec" (cid-info-codec info))
-      (cid--insert-value (format "[0x%x]" (cid-info-codec-code info)))
-      (when-let* ((desc (cid--codec-description (cid-info-codec-code info))))
-        (cid--insert-value desc))
-      (insert "\n")
-
-      ;; Multihash section
-      (cid--insert-section "Multihash")
-      (cid--insert-field "Algorithm"
-                         (concat (cid-info-multihash-name info)
-                                 (format " [0x%x]"
-                                         (cid-info-multihash-code info))))
-      (cid--insert-field "Digest Size"
-                         (format "%d bytes / %d bits"
-                                 (cid-info-digest-size info)
-                                 (* 8 (cid-info-digest-size info))))
-      (when-let* ((digest (cid-info-digest info)))
-        (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
-        ;; Digest re-encoded in base58btc (the most portable multibase).
-        (cid--insert-field "Digest (base58btc)"
-                           (cid--base58-encode digest)))
-      (insert "\n")
-
-      ;; CID byte lengths
-      (cid--insert-section "Sizes")
-      (cid--insert-field "CID string" (format "%d bytes" (length (cid-info-cid-string info))))
-      (cid--insert-field "Binary"
-                         (format "%d bytes" (length (cid-info-raw-bytes info))))
-      (insert "\n")
-
-      ;; Raw bytes section
-      (cid--insert-section "Raw Bytes")
-      (cid--insert-hex-dump (cid-info-raw-bytes info))
-
-      ;; CID version conversion
-      (when-let* ((v0 (if (= (cid-info-version info) 1)
-                          (cid--cidv1-to-v0 info)
-                        nil)))
+      (magit-insert-section (cid-root)
+        ;; Header
+        (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
         (insert "\n")
-        (cid--insert-section "CIDv0 Equivalent")
-        (cid--insert-field "CIDv0" v0))
-      (when-let* ((v1 (if (= (cid-info-version info) 0)
-                          (cid--cidv0-to-v1 info)
-                        nil)))
-        (insert "\n")
-        (cid--insert-section "CIDv1 Equivalent")
-        (cid--insert-field "CIDv1 (base32)" v1))
 
-      ;; Warnings
-      (when-let* ((errors (cid-info-errors info))
-                  (errors (reverse errors)))
+        ;; Summary line (like cid.ipfs.tech)
+        (cid--insert-summary info)
         (insert "\n")
-        (cid--insert-section "Warnings")
-        (dolist (err errors)
-          (insert "  " (propertize err 'face 'warning) "\n")))
+
+        ;; Identity section
+        (cid--insert-section "Identity"
+          (cid--insert-field "CID" (cid-info-cid-string info))
+          (cid--insert-field "Version" (format "CIDv%d" (cid-info-version info)))
+          (cid--insert-field "Multibase" (cid-info-multibase info))
+          (cid--insert-field "Codec" (cid-info-codec info))
+          (cid--insert-value (format "[0x%x]" (cid-info-codec-code info)))
+          (when-let* ((desc (cid--codec-description (cid-info-codec-code info))))
+            (cid--insert-value desc)))
+
+        ;; Multihash section
+        (cid--insert-section "Multihash"
+          (cid--insert-field "Algorithm"
+                             (concat (cid-info-multihash-name info)
+                                     (format " [0x%x]"
+                                             (cid-info-multihash-code info))))
+          (cid--insert-field "Digest Size"
+                             (format "%d bytes / %d bits"
+                                     (cid-info-digest-size info)
+                                     (* 8 (cid-info-digest-size info))))
+          (when-let* ((digest (cid-info-digest info)))
+            (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
+            (cid--insert-field "Digest (base58btc)"
+                               (cid--base58-encode digest))))
+
+        ;; Sizes section
+        (cid--insert-section "Sizes"
+          (cid--insert-field "CID string"
+                             (format "%d bytes" (length (cid-info-cid-string info))))
+          (cid--insert-field "Binary"
+                             (format "%d bytes" (length (cid-info-raw-bytes info)))))
+
+        ;; Raw bytes section
+        (cid--insert-section "Raw Bytes"
+          (cid--insert-hex-dump (cid-info-raw-bytes info)))
+
+        ;; CID version conversion
+        (when-let* ((v0 (cid--cidv1-to-v0 info)))
+          (cid--insert-section "CIDv0 Equivalent"
+            (cid--insert-field "CIDv0" v0)))
+        (when-let* ((v1 (cid--cidv0-to-v1 info)))
+          (cid--insert-section "CIDv1 Equivalent"
+            (cid--insert-field "CIDv1 (base32)" v1)))
+
+        ;; Warnings
+        (when-let* ((errors (cid-info-errors info))
+                    (errors (reverse errors)))
+          (cid--insert-section "Warnings"
+            (dolist (err errors)
+              (insert "  " (propertize err 'face 'warning) "\n")))))
 
       (goto-char (point-min))
       (set-buffer-modified-p nil)
@@ -667,17 +668,12 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
   (insert (propertize (format "CIDv%d" version)
                       'face '(:inherit shadow :height 0.9))
           "\n"))
-
-(defun cid--insert-section (title)
-  "Insert a section heading for TITLE."
-  (insert (propertize (concat title "\n")
-                      'face 'cid-section-face)))
-
 (defun cid--insert-field (label value)
-  "Insert LABEL and VALUE on a line."
-  (insert (propertize (format "%-18s " label) 'face 'cid-field-face)
-          (propertize value 'face 'font-lock-string-face)
-          "\n"))
+  "Insert a magit-section for a single field with LABEL and VALUE."
+  (magit-insert-section (cid-field label)
+    (insert (propertize (format "%-18s " label) 'face 'cid-field-face)
+            (propertize value 'face 'font-lock-string-face)
+            "\n")))
 
 (defun cid--insert-value (value)
   "Insert a continuation VALUE indented to align with fields."

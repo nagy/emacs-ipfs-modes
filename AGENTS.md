@@ -13,7 +13,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~809 lines) |
+| `cid-mode.el` | CID decoder major mode (~820 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
 | `embark-cid.el` | Embark target finder and actions for CIDs (~83 lines) |
 | `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
@@ -25,6 +25,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 | Dependency | Required? | Why |
 |---|---|---|
 | Emacs 30.1 | yes | `cl-defstruct`, `string-replace`, `defvar-keymap` |
+| magit-section | yes | collapsible sections via `magit-insert-section` |
 | browse-url | built-in | `cid-open-gateway` opens the CID on an IPFS gateway |
 | bookmark | built-in | `cid-bookmark-jump`, `cid--bookmark-make-record` |
 | rx | built-in | `rx-define` for CID pattern matching |
@@ -34,7 +35,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 ## Architecture
 
-### `cid-mode.el` (~809 lines)
+### `cid-mode.el` (~820 lines)
 
 The mode is organized into these sections:
 
@@ -55,9 +56,11 @@ The mode is organized into these sections:
    `cid--cidv1-to-v0`
 8. **CID parsing** — `cid-info` struct, `cid--decode-base`,
    `cid--detect-prefix`, `cid--parse-v0`, `cid--parse-v1`
-9. **Display** — summary line (like cid.ipfs.tech), Identity section
-   with codec description, Multihash section with bits and digest in
-   base58btc, Sizes section, Raw Bytes hex dump, CIDv0↔v1 conversion
+9. **Display** — `cid-mode` derives from `magit-section-mode` and renders
+   the decoded CID as a hierarchy of collapsible `magit-section` groups.
+   Sections (Identity, Multihash, Sizes, Raw Bytes, CIDv0 Equivalent) use
+   `magit-insert-section` / `magit-insert-heading`; individual fields
+   (CID, Version, Algorithm, etc.) are nested `cid-field` sections.
 10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
     `cid-copy-cid`, `cid-open-gateway`
 11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
@@ -190,10 +193,12 @@ emacs -Q --batch -L . -l cid-mode.el \
 
 | Key | Command | Description |
 |---|---|---|
+| `TAB` | `magit-section-toggle` | Toggle collapse on section at point |
+| `S-TAB` | `magit-section-cycle` | Collapse all sections at current level |
 | `g` | `cid-revert` | Re-render the CID buffer |
 | `w` | `cid-copy-cid` | Copy CID to kill ring |
 | `b` | `cid-open-gateway` | Open CID on IPFS gateway |
-| `q` | `quit-window` | Close the CID buffer (inherited from `special-mode-map`) |
+| `q` | `quit-window` | Close the CID buffer (inherited from `magit-section-mode-map`) |
 
 ### Embark keybindings (`embark-cid-map`)
 
@@ -208,13 +213,14 @@ emacs -Q --batch -L . -l cid-mode.el \
 ### `defvar-keymap` with `:parent`
 
 Keymaps use `defvar-keymap` with explicit `:parent` to inherit from
-standard mode maps.  `cid-mode-map` inherits from `special-mode-map`,
-which provides `q` (`quit-window`) and `g` (`revert-buffer`) for free:
+standard mode maps.  `cid-mode-map` inherits from `magit-section-mode-map`,
+which provides `TAB`/`S-TAB` for collapse/cycle, `q` (`quit-window`)
+and `g` (`revert-buffer`) for free:
 
 ```elisp
 (defvar-keymap cid-mode-map
   :doc "Keymap for `cid-mode' buffers."
-  :parent special-mode-map
+  :parent magit-section-mode-map
   "g" #'cid-revert
   "w" #'cid-copy-cid
   "b" #'cid-open-gateway)
@@ -225,21 +231,23 @@ No manual `define-key` / `make-sparse-keymap` calls.
 ### `require` order
 
 Required built-in packages come first, alphabetically, followed by
-`cl-lib`:
+`cl-lib` and `magit-section`:
 
 ```elisp
 (require 'bookmark)
 (require 'browse-url)
 (require 'cl-lib)
+(require 'magit-section)
 (require 'rx)
 (require 'thingatpt)
 ```
 
-### Derive from `special-mode`
+### Derive from `magit-section-mode`
 
-`cid-mode` derives from `special-mode`.  This gives read-only buffers,
-`q` keybinding, and standard buffer conventions for free — no manual
-`read-only-mode` calls.
+`cid-mode` derives from `magit-section-mode` (which itself derives from
+`special-mode`).  This gives read-only buffers, collapsible sections,
+navigation (`magit-section-forward`/`magit-section-backward`), and
+standard buffer conventions for free.
 
 ### `cid-info` struct
 
@@ -370,10 +378,10 @@ characters are defined once as an `rx-define` pattern:
 
 ### Display rendering
 
-CID display uses `cl-defstruct` accessors throughout `cid--display`,
-with helpers (`cid--insert-header`, `cid--insert-section`,
-`cid--insert-field`, `cid--insert-value`, `cid--insert-hex-dump`).
-These are currently top-level `defun`s.
+CID display uses `magit-insert-section` and `magit-insert-heading` to
+build a hierarchy of collapsible sections.  The root is a `cid-root`
+section; each data group (Identity, Multihash, etc.) is a `cid-section`;
+each field label is a `cid-field` leaf.
 
 Faces are defined as `defface` rather than inline `:inherit` props:
 
@@ -402,9 +410,6 @@ instead of inheriting the user's current directory.
 
 ## TODO
 
-- **`magit-section-mode`** — restructure display to use
-  `magit-insert-section` / `magit-insert-heading` for collapsible
-  sections with built-in navigation (like `tokei.el`).
 - **`dag-mode`** — browse IPLD DAG nodes by following links in
   dag-pb/dag-cbor content
 - **`ipfs-mode`** — interactive IPFS node control (peers, pinning,
