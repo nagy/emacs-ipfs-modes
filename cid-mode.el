@@ -670,18 +670,18 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
 
 (defun cid--insert-section (title)
   "Insert a section heading for TITLE."
-  (insert (propertize (concat "╔═ " title "\n")
+  (insert (propertize (concat title "\n")
                       'face 'cid-section-face)))
 
 (defun cid--insert-field (label value)
   "Insert LABEL and VALUE on a line."
-  (insert (propertize (format "  %-14s " label) 'face 'cid-field-face)
+  (insert (propertize (format "%-18s " label) 'face 'cid-field-face)
           (propertize value 'face 'font-lock-string-face)
           "\n"))
 
 (defun cid--insert-value (value)
   "Insert a continuation VALUE indented to align with fields."
-  (insert (make-string 18 ?\s)
+  (insert (make-string 19 ?\s)
           (propertize value 'face 'font-lock-builtin-face)
           "\n"))
 

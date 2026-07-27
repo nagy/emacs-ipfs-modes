@@ -371,11 +371,9 @@ characters are defined once as an `rx-define` pattern:
 ### Display rendering
 
 CID display uses `cl-defstruct` accessors throughout `cid--display`,
-with `cl-labels`-style helpers (`cid--insert-header`,
-`cid--insert-section`, `cid--insert-field`, `cid--insert-value`,
-`cid--insert-hex-dump`).  These are currently top-level `defun`s
-because `cid--display` is outside the mode body (modes that
-use `cl-labels` inside `define-derived-mode` avoid this).
+with helpers (`cid--insert-header`, `cid--insert-section`,
+`cid--insert-field`, `cid--insert-value`, `cid--insert-hex-dump`).
+These are currently top-level `defun`s.
 
 Faces are defined as `defface` rather than inline `:inherit` props:
 
@@ -404,12 +402,9 @@ instead of inheriting the user's current directory.
 
 ## TODO
 
-- **`cl-labels` for display helpers** — move the five `cid--insert-*`
-  helpers into `cid--display` as `cl-labels` closures.  They are only
-  called from one place and don't need package-wide visibility.
-- **Replace Unicode box-drawing** — the `╔═` section headings in
-  `cid--insert-section` are non-standard.  Consider replacing with
-  plain text section headings.
+- **`magit-section-mode`** — restructure display to use
+  `magit-insert-section` / `magit-insert-heading` for collapsible
+  sections with built-in navigation (like `tokei.el`).
 - **`dag-mode`** — browse IPLD DAG nodes by following links in
   dag-pb/dag-cbor content
 - **`ipfs-mode`** — interactive IPFS node control (peers, pinning,
