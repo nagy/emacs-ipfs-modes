@@ -542,6 +542,15 @@ expected %d, got %d"
 
 ;;; Display
 
+(defvar-keymap magit-cid-field-section-map
+  :doc "Keymap for CID field sections (individual field lines)."
+  "RET" #'cid-copy-field-value
+  "y"   #'cid-copy-field-value)
+
+(defvar-keymap magit-cid-section-section-map
+  :doc "Keymap for CID section headings (Identity, Multihash, etc.)."
+  "RET" #'magit-section-toggle)
+
 (defvar-keymap cid-mode-map
   :doc "Keymap for `cid-mode' buffers."
   :parent magit-section-mode-map
@@ -584,6 +593,24 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
        (propertize (concat ,title "\n") 'font-lock-face 'cid-section-face))
      ,@body
      (insert "\n")))
+
+(defun cid-copy-field-value ()
+  "Copy the value of the current field to the kill ring.
+Works on `cid-field' sections (field lines like Algorithm, Digest Size, etc.)."
+  (interactive)
+  (let ((section (magit-current-section)))
+    (unless (and section (eq (oref section type) 'cid-field))
+      (user-error "No field at point"))
+    ;; The buffer text is: "%-18s LABEL VALUE"
+    (save-excursion
+      (goto-char (oref section start))
+      (forward-char 19)
+      (let ((value (buffer-substring-no-properties (point) (line-end-position))))
+        (kill-new value)
+        (message "Copied: %s" value)))))
+
+
+
 (defun cid--display (info)
   "Display decoded CID INFO in a `cid-mode' buffer."
   (let ((buf (get-buffer-create

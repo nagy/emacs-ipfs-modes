@@ -191,14 +191,41 @@ emacs -Q --batch -L . -l cid-mode.el \
 
 ## Keybindings
 
+### `cid-mode-map` (global)
+
 | Key | Command | Description |
 |---|---|---|
 | `TAB` | `magit-section-toggle` | Toggle collapse on section at point |
 | `S-TAB` | `magit-section-cycle` | Collapse all sections at current level |
+| `n`/`p` | `magit-section-forward`/`backward` | Navigate between sections |
+| `M-n`/`M-p` | `magit-section-forward-sibling`/`backward-sibling` | Navigate between siblings |
+| `^` | `magit-section-up` | Go to parent section |
+| `1`..`4` | `magit-section-show-level-{1..4}` | Show sections up to level N |
+| `M-1`..`M-4` | `magit-section-show-level-{1..4}-all` | Show all sections up to level N |
 | `g` | `cid-revert` | Re-render the CID buffer |
-| `w` | `cid-copy-cid` | Copy CID to kill ring |
+| `w` | `cid-copy-cid` | Copy CID string to kill ring |
 | `b` | `cid-open-gateway` | Open CID on IPFS gateway |
 | `q` | `quit-window` | Close the CID buffer (inherited from `magit-section-mode-map`) |
+
+### Section-specific keymaps
+
+These keymaps are auto-discovered by magit-section via the naming convention
+`magit-<TYPE>-section-map` — no explicit registration needed.
+
+**`magit-cid-field-section-map`** — active on individual field lines
+(Algorithm, Digest Size, Digest (hex), etc.):
+
+| Key | Command | Description |
+|---|---|---|
+| `y` | `cid-copy-field-value` | Copy field value to kill ring |
+| `RET` | `cid-copy-field-value` | Copy field value to kill ring |
+
+**`magit-cid-section-section-map`** — active on section headings
+(Identity, Multihash, Sizes, etc.):
+
+| Key | Command | Description |
+|---|---|---|
+| `RET` | `magit-section-toggle` | Toggle collapse/expand of section |
 
 ### Embark keybindings (`embark-cid-map`)
 
@@ -214,7 +241,8 @@ emacs -Q --batch -L . -l cid-mode.el \
 
 Keymaps use `defvar-keymap` with explicit `:parent` to inherit from
 standard mode maps.  `cid-mode-map` inherits from `magit-section-mode-map`,
-which provides `TAB`/`S-TAB` for collapse/cycle, `q` (`quit-window`)
+which provides `TAB`/`S-TAB` for collapse/cycle, `n`/`p` for
+navigation, `1`..`4` for show-level commands, `q` (`quit-window`)
 and `g` (`revert-buffer`) for free:
 
 ```elisp
@@ -224,6 +252,24 @@ and `g` (`revert-buffer`) for free:
   "g" #'cid-revert
   "w" #'cid-copy-cid
   "b" #'cid-open-gateway)
+```
+
+### Section-specific keymaps via naming convention
+
+Magit-section automatically discovers per-section-type keymaps.  When
+creating a section via `(magit-insert-section (cid-field "Algorithm") ...)`,
+if a variable named `magit-cid-field-section-map` exists and is bound,
+it is used as the section's keymap:
+
+```elisp
+(defvar-keymap magit-cid-field-section-map
+  :doc "Keymap for CID field sections (individual field lines)."
+  "RET" #'cid-copy-field-value
+  "y"   #'cid-copy-field-value)
+
+(defvar-keymap magit-cid-section-section-map
+  :doc "Keymap for CID section headings (Identity, Multihash, etc.)."
+  "RET" #'magit-section-toggle)
 ```
 
 No manual `define-key` / `make-sparse-keymap` calls.
