@@ -490,7 +490,23 @@ modify the buffer based on the parsed CID data:
 
 CID buffers set `default-directory` to `temporary-file-directory`
 instead of inheriting the user's current directory.
+### Screenshot via Nix
 
+`emacs-screenshot.nix` provides a reproducible way to render CID decode
+output as a PNG image, following the same pattern as `~/nixos.el` and
+`~/crate.el`.  It builds `cid-mode` via `default.nix`, launches an
+Emacs frame under `xvfb-run` with the modus-operandi theme and Iosevka
+font, decodes the Big Buck Bunny CID, makes the buffer the sole window,
+sizes the frame to fit, and captures the frame with `x-export-frames`.
+
+```
+nix build -f emacs-screenshot.nix png --out-link /tmp/screenshot
+```
+
+Available outputs:
+- `png` — light-theme PNG with imagemagick border + shadow + pngquant
+- `svg` — dual-theme (light/dark) SVG via `svgDualTheme`
+- `gitrepo` — SVG wrapped for git hosting
 ## TODO
 
 - **`dag-mode`** — browse IPLD DAG nodes by following links in
