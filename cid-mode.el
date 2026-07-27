@@ -569,21 +569,28 @@ Use `M-x cid-decode' to decode a CID."
   (setq-local revert-buffer-function #'cid-revert)
   (setq-local bookmark-make-record-function #'cid--bookmark-make-record))
 
-(defun cid--insert-summary (info)
-  "Insert a one-line human-readable CID summary for INFO.
-Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
-  (insert (propertize
-           (format "%s - cidv%d - %s - (%s : %d : %s)"
-                   (cid-info-multibase info)
-                   (cid-info-version info)
-                   (cid-info-codec info)
-                   (cid-info-multihash-name info)
-                   (* 8 (cid-info-digest-size info))
-                   (if (cid-info-digest info)
-                       (upcase (cid--encode-hex (cid-info-digest info)))
-                     ""))
-           'face '(:inherit shadow))
-          "\n"))
+;;; Sections hook
+
+(defcustom cid-sections-hook
+  '(cid-insert-header-section
+    cid-insert-identity-section
+    cid-insert-multihash-section
+    cid-insert-sizes-section
+    cid-insert-raw-bytes-section
+    cid-insert-cidv0-section
+    cid-insert-cidv1-section
+    cid-insert-warnings-section)
+  "Hook run to insert sections into a `cid-mode' buffer.
+Each function is called with no arguments; `cid--info' is
+the buffer-local `cid-info' struct for the current CID.
+Functions should insert their content at point using
+`magit-insert-section' and `magit-insert-heading'.
+An error in one function does not prevent others from
+running (via `magit-run-section-hook')."
+  :type 'hook
+  :group 'cid)
+
+;;; Section inserters
 
 (defmacro cid--insert-section (title &rest body)
   "Insert a magit-section group with TITLE heading and BODY forms."
@@ -593,6 +600,91 @@ Format: multibase - cidvN - codec - (multihash-name : bits : digest-hex)"
        (propertize (concat ,title "\n") 'font-lock-face 'cid-section-face))
      ,@body
      (insert "\n")))
+
+(defun cid-insert-header-section ()
+  "Insert the CID string header and version line."
+  (let ((info cid--info))
+    (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
+    (insert "\n")
+    (insert (propertize
+             (format "%s - cidv%d - %s - (%s : %d : %s)"
+                     (cid-info-multibase info)
+                     (cid-info-version info)
+                     (cid-info-codec info)
+                     (cid-info-multihash-name info)
+                     (* 8 (cid-info-digest-size info))
+                     (if (cid-info-digest info)
+                         (upcase (cid--encode-hex (cid-info-digest info)))
+                       ""))
+             'face '(:inherit shadow))
+            "\n")
+    (insert "\n")))
+
+(defun cid-insert-identity-section ()
+  "Insert the Identity section with CID, Version, Multibase, Codec."
+  (let ((info cid--info))
+    (cid--insert-section "Identity"
+      (cid--insert-field "CID" (cid-info-cid-string info))
+      (cid--insert-field "Version" (format "CIDv%d" (cid-info-version info)))
+      (cid--insert-field "Multibase" (cid-info-multibase info))
+      (cid--insert-field "Codec" (cid-info-codec info))
+      (cid--insert-value (format "[0x%x]" (cid-info-codec-code info)))
+      (when-let* ((desc (cid--codec-description (cid-info-codec-code info))))
+        (cid--insert-value desc)))))
+
+(defun cid-insert-multihash-section ()
+  "Insert the Multihash section with Algorithm, Digest Size, digests."
+  (let ((info cid--info))
+    (cid--insert-section "Multihash"
+      (cid--insert-field "Algorithm"
+                         (concat (cid-info-multihash-name info)
+                                 (format " [0x%x]" (cid-info-multihash-code info))))
+      (cid--insert-field "Digest Size"
+                         (format "%d bytes / %d bits"
+                                 (cid-info-digest-size info)
+                                 (* 8 (cid-info-digest-size info))))
+      (when-let* ((digest (cid-info-digest info)))
+        (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
+        (cid--insert-field "Digest (base58btc)"
+                           (cid--base58-encode digest))))))
+
+(defun cid-insert-sizes-section ()
+  "Insert the Sizes section."
+  (let ((info cid--info))
+    (cid--insert-section "Sizes"
+      (cid--insert-field "CID string"
+                         (format "%d bytes" (length (cid-info-cid-string info))))
+      (cid--insert-field "Binary"
+                         (format "%d bytes" (length (cid-info-raw-bytes info)))))))
+
+(defun cid-insert-raw-bytes-section ()
+  "Insert the Raw Bytes hex dump section."
+  (let ((info cid--info))
+    (cid--insert-section "Raw Bytes"
+      (cid--insert-hex-dump (cid-info-raw-bytes info)))))
+
+(defun cid-insert-cidv0-section ()
+  "Insert CIDv0 Equivalent section, if applicable."
+  (when-let* ((info cid--info)
+              (v0 (cid--cidv1-to-v0 info)))
+    (cid--insert-section "CIDv0 Equivalent"
+      (cid--insert-field "CIDv0" v0))))
+
+(defun cid-insert-cidv1-section ()
+  "Insert CIDv1 Equivalent section, if applicable."
+  (when-let* ((info cid--info)
+              (v1 (cid--cidv0-to-v1 info)))
+    (cid--insert-section "CIDv1 Equivalent"
+      (cid--insert-field "CIDv1 (base32)" v1))))
+
+(defun cid-insert-warnings-section ()
+  "Insert the Warnings section, if there are any."
+  (when-let* ((info cid--info)
+              (errors (cid-info-errors info))
+              (errors (reverse errors)))
+    (cid--insert-section "Warnings"
+      (dolist (err errors)
+        (insert "  " (propertize err 'face 'warning) "\n")))))
 
 (defun cid-copy-field-value ()
   "Copy the value of the current field to the kill ring.
@@ -623,64 +715,7 @@ Works on `cid-field' sections (field lines like Algorithm, Digest Size, etc.)."
       (setq cid--info info)
 
       (magit-insert-section (cid-root)
-        ;; Header
-        (cid--insert-header (cid-info-cid-string info) (cid-info-version info))
-        (insert "\n")
-
-        ;; Summary line (like cid.ipfs.tech)
-        (cid--insert-summary info)
-        (insert "\n")
-
-        ;; Identity section
-        (cid--insert-section "Identity"
-          (cid--insert-field "CID" (cid-info-cid-string info))
-          (cid--insert-field "Version" (format "CIDv%d" (cid-info-version info)))
-          (cid--insert-field "Multibase" (cid-info-multibase info))
-          (cid--insert-field "Codec" (cid-info-codec info))
-          (cid--insert-value (format "[0x%x]" (cid-info-codec-code info)))
-          (when-let* ((desc (cid--codec-description (cid-info-codec-code info))))
-            (cid--insert-value desc)))
-
-        ;; Multihash section
-        (cid--insert-section "Multihash"
-          (cid--insert-field "Algorithm"
-                             (concat (cid-info-multihash-name info)
-                                     (format " [0x%x]"
-                                             (cid-info-multihash-code info))))
-          (cid--insert-field "Digest Size"
-                             (format "%d bytes / %d bits"
-                                     (cid-info-digest-size info)
-                                     (* 8 (cid-info-digest-size info))))
-          (when-let* ((digest (cid-info-digest info)))
-            (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
-            (cid--insert-field "Digest (base58btc)"
-                               (cid--base58-encode digest))))
-
-        ;; Sizes section
-        (cid--insert-section "Sizes"
-          (cid--insert-field "CID string"
-                             (format "%d bytes" (length (cid-info-cid-string info))))
-          (cid--insert-field "Binary"
-                             (format "%d bytes" (length (cid-info-raw-bytes info)))))
-
-        ;; Raw bytes section
-        (cid--insert-section "Raw Bytes"
-          (cid--insert-hex-dump (cid-info-raw-bytes info)))
-
-        ;; CID version conversion
-        (when-let* ((v0 (cid--cidv1-to-v0 info)))
-          (cid--insert-section "CIDv0 Equivalent"
-            (cid--insert-field "CIDv0" v0)))
-        (when-let* ((v1 (cid--cidv0-to-v1 info)))
-          (cid--insert-section "CIDv1 Equivalent"
-            (cid--insert-field "CIDv1 (base32)" v1)))
-
-        ;; Warnings
-        (when-let* ((errors (cid-info-errors info))
-                    (errors (reverse errors)))
-          (cid--insert-section "Warnings"
-            (dolist (err errors)
-              (insert "  " (propertize err 'face 'warning) "\n")))))
+        (magit-run-section-hook 'cid-sections-hook))
 
       (goto-char (point-min))
       (set-buffer-modified-p nil)

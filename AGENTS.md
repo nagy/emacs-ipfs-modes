@@ -62,7 +62,7 @@ The mode is organized into these sections:
    `magit-insert-section` / `magit-insert-heading`; individual fields
    (CID, Version, Algorithm, etc.) are nested `cid-field` sections.
 10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
-    `cid-copy-cid`, `cid-open-gateway`
+    `cid-copy-cid`, `cid-copy-field-value`, `cid-open-gateway`
 11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
 12. **URL scheme handlers** — `cid--browse-ipfs` registers `ipfs://`
     and `ipns://` handlers via `browse-url-default-handlers`
@@ -428,6 +428,43 @@ CID display uses `magit-insert-section` and `magit-insert-heading` to
 build a hierarchy of collapsible sections.  The root is a `cid-root`
 section; each data group (Identity, Multihash, etc.) is a `cid-section`;
 each field label is a `cid-field` leaf.
+
+The rendering is driven by the customizable `cid-sections-hook`:
+
+```elisp
+(defcustom cid-sections-hook
+  '(cid-insert-header-section
+    cid-insert-identity-section
+    cid-insert-multihash-section
+    cid-insert-sizes-section
+    cid-insert-raw-bytes-section
+    cid-insert-cidv0-section
+    cid-insert-cidv1-section
+    cid-insert-warnings-section)
+  :type 'hook
+  :group 'cid)
+```
+
+Users can add, remove, or reorder section inserters via
+`M-x customize-variable RET cid-sections-hook`, or programmatically
+with `add-hook` / `remove-hook`.  Each inserter is wrapped by
+`magit-run-section-hook`, so an error in one doesn't break the whole
+buffer.  Users can also disable individual inserters without removing
+them from the hook using `magit-disabled-section-inserters`.
+
+The three non-conditional inserters always run:
+
+- `cid-insert-header-section` — CID string + version line + summary
+- `cid-insert-identity-section` — CID, Version, Multibase, Codec
+- `cid-insert-multihash-section` — Algorithm, Digest Size, digests
+- `cid-insert-sizes-section` — CID string bytes, Binary bytes
+- `cid-insert-raw-bytes-section` — hex dump
+
+The conditional inserters only fire when applicable:
+
+- `cid-insert-cidv0-section` — CIDv1 dag-pb sha2-256 → CIDv0 equivalent
+- `cid-insert-cidv1-section` — CIDv0 → CIDv1 base32 equivalent
+- `cid-insert-warnings-section` — parsing errors/warnings
 
 Faces are defined as `defface` rather than inline `:inherit` props:
 
