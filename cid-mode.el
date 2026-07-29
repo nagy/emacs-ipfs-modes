@@ -645,6 +645,7 @@ running (via `magit-run-section-hook')."
                                  (* 8 (cid-info-digest-size info))))
       (when-let* ((digest (cid-info-digest info)))
         (cid--insert-field "Digest (hex)" (cid--encode-hex digest))
+        (cid--insert-field "Digest (base32)" (cid--base32-encode digest))
         (cid--insert-field "Digest (base58btc)"
                            (cid--base58-encode digest))))))
 

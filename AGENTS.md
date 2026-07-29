@@ -121,7 +121,7 @@ CID string
   → cid--display (render in cid-mode buffer)
     → summary line
     → identity + codec description
-    → multihash + digest (hex + base58btc) + bits
+    → multihash + digest (hex + base32 + base58btc) + bits
     → sizes (CID string bytes, binary bytes)
     → raw bytes hex dump
     → CIDv0→v1 or v1→v0 conversion
@@ -475,7 +475,7 @@ The three non-conditional inserters always run:
 
 - `cid-insert-header-section` — CID string + version line + summary
 - `cid-insert-identity-section` — CID, Version, Multibase, Codec
-- `cid-insert-multihash-section` — Algorithm, Digest Size, digests
+- `cid-insert-multihash-section` — Algorithm, Digest Size, digests (hex, base32, base58btc)
 - `cid-insert-sizes-section` — CID string bytes, Binary bytes
 - `cid-insert-raw-bytes-section` — hex dump
 
