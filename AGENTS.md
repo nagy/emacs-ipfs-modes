@@ -13,7 +13,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 | File | Purpose |
 |---|---|
-| `cid-mode.el` | CID decoder major mode (~820 lines) |
+| `cid-mode.el` | CID decoder major mode (~905 lines) |
 | `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
 | `embark-cid.el` | Embark target finder and actions for CIDs (~83 lines) |
 | `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
@@ -35,7 +35,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 ## Architecture
 
-### `cid-mode.el` (~820 lines)
+### `cid-mode.el` (~905 lines)
 
 The mode is organized into these sections:
 
@@ -61,8 +61,8 @@ The mode is organized into these sections:
    Sections (Identity, Multihash, Sizes, Raw Bytes, CIDv0 Equivalent) use
    `magit-insert-section` / `magit-insert-heading`; individual fields
    (CID, Version, Algorithm, etc.) are nested `cid-field` sections.
-10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-revert`,
-    `cid-copy-cid`, `cid-copy-field-value`, `cid-open-gateway`
+10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-decode-from-raw`,
+    `cid-revert`, `cid-copy-cid`, `cid-copy-field-value`, `cid-open-gateway`
 11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
 12. **URL scheme handlers** — `cid--browse-ipfs` registers `ipfs://`
     and `ipns://` handlers via `browse-url-default-handlers`
@@ -321,6 +321,25 @@ known multibase prefix, excluding characters ambiguous in base58
 (`0`, `O`, `I`, `l`).  The `rx` patterns are defined once at
 compile time with `rx-define` and referenced via `(rx cid-v0)` etc.,
 avoiding inline regex strings in `string-match-p`.
+
+### `cid-decode-from-raw`
+
+`cid-decode-from-raw` takes a hex-encoded hash digest and constructs a CIDv1
+with the `raw` codec (0x55) and base58btc multibase encoding (`z` prefix).
+
+The multihash algorithm is auto-detected from the digest length:
+
+| Hex chars | Bytes | Algorithm | Code |
+|---|---|---|---|
+| 40 | 20 | sha1 | 0x11 |
+| 64 | 32 | sha2-256 | 0x12 |
+
+When called interactively (`M-x cid-decode-from-raw`), prompts for the hex
+digest and displays the resulting CID in a `cid-mode` buffer (via
+`cid-decode`).  When called non-interactively, returns the CIDv1 string.
+
+All invalid inputs (empty string, odd-length hex, unsupported byte
+count) produce a single `user-error` with the expected lengths.
 
 ### `thing-at-point` integration
 

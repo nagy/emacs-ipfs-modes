@@ -784,6 +784,34 @@ Works on `cid-field' sections (field lines like Algorithm, Digest Size, etc.)."
                       (cid-info-cid-string cid--info))))
 
 ;;;###autoload
+(defun cid-decode-from-raw (hex-digest)
+  "Create a CIDv1 with raw codec from HEX-DIGEST (a hex-encoded hash).
+When called interactively, prompt for the hex digest and display
+the resulting CID in a `cid-mode' buffer.  When called
+non-interactively, return the CIDv1 string.
+
+The multihash algorithm is auto-detected from the digest length:
+  40 hex chars (20 bytes) → sha1
+  64 hex chars (32 bytes) → sha2-256"
+  (interactive "sHex-encoded digest: ")
+  (let* ((hex (string-trim hex-digest))
+         (digest (cid--base16-decode hex))
+         (byte-len (and digest (length digest)))
+         (hash-code
+          (pcase byte-len
+            (20 #x11)                      ; sha1
+            (32 #x12)                      ; sha2-256
+            (_
+             (user-error
+              "Unsupported digest length %d bytes (expected 20=sha1, 32=sha2-256)"
+              (or byte-len 0)))))         ;; CIDv1 binary: version=1, codec=raw, multihash
+         (binary (vconcat (vector #x01 #x55 hash-code byte-len) digest))
+         (cid-str (concat "z" (cid--base58-encode binary))))
+    (if (called-interactively-p 'any)
+        (cid-decode cid-str)
+      cid-str)))
+
+;;;###autoload
 (defun cid-decode-at-point ()
   "Decode the CID at point in the current buffer."
   (interactive)
