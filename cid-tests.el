@@ -413,16 +413,16 @@
 
 (ert-deftest cid-bounds-v1 ()
   "`cid--bounds' finds a CIDv1 at point."
-  ;; Use a clean base32-prefixed string without characters in the
-  ;; case-sensitive ambiguous set: 0, O, I, l (all four act like 0 in base58).
-  (let ((cid "babcdefghjk"))
-    (with-temp-buffer
-      (insert "prefix " cid " suffix")
-      (goto-char 15) ; inside the CID
-      (let ((bounds (cid--bounds)))
-        (should bounds)
-        (should (equal (buffer-substring (car bounds) (cdr bounds))
-                       cid))))))
+  ;; The real CIDv1 test vector contains lowercase l, which is
+  ;; legitimate in base32 (the old ambiguous-char heuristic wrongly
+  ;; rejected such CIDs).
+  (with-temp-buffer
+    (insert "prefix " cid-test--v1-str " suffix")
+    (goto-char 15) ; inside the CID
+    (let ((bounds (cid--bounds)))
+      (should bounds)
+      (should (equal (buffer-substring (car bounds) (cdr bounds))
+                     cid-test--v1-str)))))
 
 (ert-deftest cid-bounds-no-cid ()
   "`cid--bounds' returns nil when no CID is at point."
@@ -440,6 +440,29 @@
     ;; It also isn't a valid v1 prefix (Q != known prefix), so bounds returns nil.
     (should-not (cid--bounds))))
 
+(ert-deftest cid-bounds-rejects-lookalike-words ()
+  "`cid--bounds' rejects prose words sharing a multibase prefix."
+  ;; Words starting with a valid multibase prefix (c, b, z, f, m, u)
+  ;; that do not decode to a valid CID framing.
+  (dolist (word (list "crate" "cafebabe" "cat" "banana" "base"
+                      "color" "coin" "code" "car" "bacon" "zQm"))
+    (with-temp-buffer
+      (insert "pre " word " post")
+      (goto-char (+ 5 (length word)))
+      (ert-info ((format "testing word %S" word))
+        (should-not (cid--bounds))))))
+
+
+(ert-deftest cid-bounds-accepts-real-v1-with-l ()
+  "`cid--bounds' accepts the real CIDv1 test vector, which contains l."
+  (with-temp-buffer
+    (insert cid-test--v1-str)
+    (goto-char 1)
+    (let ((bounds (cid--bounds)))
+      (should bounds)
+      (should (equal (buffer-substring (car bounds) (cdr bounds))
+                     cid-test--v1-str)))))
+
 
 ;;; Thing-at-point
 
@@ -452,12 +475,10 @@
 
 (ert-deftest cid-thing-at-point-v1 ()
   "`thing-at-point' returns a CIDv1 when point is on one."
-  ;; Use a clean base32-prefixed string without ambiguous chars.
   (with-temp-buffer
-    (let ((cid "babcdefghjk"))
-      (insert "prefix " cid " suffix")
-      (goto-char 12)
-      (should (equal (thing-at-point 'cid) cid)))))
+    (insert "prefix " cid-test--v1-str " suffix")
+    (goto-char 12)
+    (should (equal (thing-at-point 'cid) cid-test--v1-str))))
 
 (ert-deftest cid-thing-at-point-no-cid ()
   "`thing-at-point' returns nil when not on a CID."

@@ -183,14 +183,6 @@ or 0 for variable.")
 (defvar cid--v0-prefix-chars "Qm"
   "Characters a CIDv0 must start with.  `rx-define' evaluates at expansion time.")
 
-(rx-define cid-v1-ambiguous
-  (any "0" "O" "I" "l"))
-
-(rx-define cid-v1-word
-  (seq bos
-       (one-or-more (not (in cid-v1-ambiguous)))
-       eos))
-
 (defconst cid--thing-char-class "A-Za-z0-9"
   "Character class for skipping to CID boundaries.
 Used by `cid--bounds' for `skip-chars-forward/backward'.")
@@ -389,6 +381,35 @@ CIDv0 is always dag-pb + sha2-256, so the conversion is unambiguous."
 
 
 ;;; CID decoding and parsing
+
+(defun cid--valid-cid-string-p (str)
+  "Return non-nil if STR is a structurally valid CID.
+
+Cheap lexical checks first (v0: Qm + 46 base58 chars; v1: known
+multibase prefix, >= 3 chars), then a full decode: CIDv0 strings
+are decoded as base58btc and must parse as a multihash; CIDv1
+strings must decode to a version/codec/multihash framing.  A
+candidate is accepted only if it parses without errors, so a word
+that merely shares a multibase prefix but does not decode cleanly
+(e.g. \"crate\", \"cafebabe\") is rejected.  Note that base32
+CIDs legitimately contain `l`, so no ambiguous-character exclusion
+is applied."
+  (declare (side-effect-free t))
+  (cond
+   ;; CIDv0: exactly 46 base58 chars starting with Qm
+   ((and (string-prefix-p cid--v0-prefix-chars str)
+         (string-match-p (rx cid-v0) str))
+    (when-let* ((raw (cid--base58-decode str))
+                (info (cid--parse-v0 str raw)))
+      (null (cid-info-errors info))))
+   ;; CIDv1: known multibase prefix, >= 3 chars, and must decode cleanly.
+   ((and (>= (length str) 3)
+         (assq (aref str 0) cid--multibase-prefixes)
+         (string-match-p (rx (seq bos (one-or-more cid-char) eos)) str))
+    (when-let* ((raw (cid--decode-base str (aref str 0)))
+                (info (cid--parse-v1 str (aref str 0) raw)))
+      (null (cid-info-errors info))))
+   (t nil)))
 
 (defun cid--decode-base (str prefix)
   "Decode STR with multibase PREFIX character.
@@ -834,18 +855,7 @@ Handles both CIDv0 (Qm...) and CIDv1 (multibase prefix)."
         (setq end (point))
         (when (> end start)
           (let ((word (buffer-substring-no-properties start end)))
-            (when (or
-                   ;; CIDv0: starts with Qm, exactly 46 base58 chars
-                   (and (string-prefix-p cid--v0-prefix-chars word)
-                        (string-match-p (rx cid-v0) word))
-                   ;; CIDv1: starts with known multibase prefix,
-                   ;; no chars ambiguous in base58 (0, O, I, l)
-                   (and (assq (aref word 0) cid--multibase-prefixes)
-                        (>= (length word) 3)
-                        (string-match-p (rx (seq bos (one-or-more cid-char) eos))
-                                        word)
-                        (not (let ((case-fold-search nil))
-                               (string-match-p (rx cid-v1-ambiguous) word)))))
+            (when (cid--valid-cid-string-p word)
               (cons start end))))))))
 
 (defun cid--thing-at-point ()

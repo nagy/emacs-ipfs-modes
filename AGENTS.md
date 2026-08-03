@@ -45,9 +45,9 @@ The mode is organized into these sections:
 2. **Constants** — Multibase, multicodec, and multihash tables
    (canonical names from the `go-multicodec` / `go-multibase` tables
    vendored in the IPFS Kubo source)
-3. **Rx patterns** — `cid-char`, `cid-v0`, `cid-v0-strict`,
-   `cid-v1-ambiguous`, `cid-v1-word` (compiled `rx-define` patterns
-   for CID detection; avoids inline regex strings in `string-match-p`)
+3. **Rx patterns** — `cid-char`, `cid-v0`, `cid-v0-strict` (compiled
+   `rx-define` patterns for CID detection; avoids inline regex strings
+   in `string-match-p`)
 4. **Encoding decoders** — base58btc, base32 (lower/upper/nopad), base16
 5. **Encoding encoders** — base58btc, base32 (for conversion display)
 6. **Varint decoder** — unsigned LEB128 used by CID framing
@@ -317,10 +317,14 @@ errors.
 Uses `skip-chars-forward/backward` and `rx`-compiled patterns to find
 CIDs in any buffer.  CIDv0 detection is strict (exactly 46 base58
 chars starting with `Qm`); CIDv1 detects any word starting with a
-known multibase prefix, excluding characters ambiguous in base58
-(`0`, `O`, `I`, `l`).  The `rx` patterns are defined once at
-compile time with `rx-define` and referenced via `(rx cid-v0)` etc.,
-avoiding inline regex strings in `string-match-p`.
+known multibase prefix (>= 3 chars).  The `rx` patterns are defined
+once at compile time with `rx-define` and referenced via
+`(rx cid-v0)` etc., avoiding inline regex strings in
+`string-match-p`.  Candidates are then validated by actually decoding
+via `cid--valid-cid-string-p` (see below), so words that merely share
+a multibase prefix (e.g. `crate`, `cafebabe`) are rejected.  Note
+that base32 CIDs legitimately contain `l`, so no ambiguous-character
+exclusion is applied.
 
 ### `cid-decode-from-raw`
 
@@ -422,24 +426,16 @@ In `lexical-binding: t`, plain `let` evaluates all init forms in the
 outer scope — later bindings cannot reference earlier ones.  Use
 `let*` when one binding's init form depends on a prior binding.
 
-### `case-fold-search` for character class matches
+### CID detection validates by decoding
 
-`string-match-p` defaults to case-insensitive matching.  When matching
-against a specific set of characters that includes letters, bind
-`case-fold-search` to nil to avoid false positives.  The ambiguous
-characters are defined once as an `rx-define` pattern:
-
-```elisp
-(rx-define cid-v1-ambiguous
-  (any "0" "O" "I" "l"))
-
-;; Wrong — also matches lowercase i and l (because I and l match)
-(not (string-match-p "[0OIl]" word))
-
-;; Correct
-(not (let ((case-fold-search nil))
-       (string-match-p (rx cid-v1-ambiguous) word)))
-```
+`cid--bounds` finds word boundaries with `skip-chars-forward/backward`
+and `rx`-compiled patterns, then validates the candidate with
+`cid--valid-cid-string-p`: the word must fully decode to a CIDv0
+multihash or a CIDv1 version/codec/multihash framing **without parse
+errors**.  This rejects prose words that merely share a multibase
+prefix (e.g. `crate` is base32pad-prefixed but decodes to bytes that
+do not form a valid CID).  Base32 CIDs legitimately contain `l`, so
+no ambiguous-character exclusion is applied.
 
 ### Display rendering
 
