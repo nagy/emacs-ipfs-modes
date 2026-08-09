@@ -11,31 +11,31 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `cid-mode.el` | CID decoder major mode (~905 lines) |
-| `ol-cid.el` | Org link type `cid:` for CID references (~90 lines) |
-| `embark-cid.el` | Embark target finder and actions for CIDs (~83 lines) |
-| `cid-tests.el` | ERT test suite (~606 lines, 61 tests) |
-| `default.nix` | Nix build with `melpaBuild` |
-| `shell.nix` | Nix dev shell with Emacs and dependencies |
+|File           |Purpose                                              |
+|---------------|-----------------------------------------------------|
+|`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
+|`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
+|`embark-cid.el`|Embark target finder and actions for CIDs (~81 lines)|
+|`cid-tests.el` |ERT test suite (~629 lines, 63 tests)                |
+|`default.nix`  |Nix build with `melpaBuild`                          |
+|`shell.nix`    |Nix dev shell with Emacs and dependencies            |
 
 ## Dependencies
 
-| Dependency | Required? | Why |
-|---|---|---|
-| Emacs 30.1 | yes | `cl-defstruct`, `string-replace`, `defvar-keymap` |
-| magit-section | yes | collapsible sections via `magit-insert-section` |
-| browse-url | built-in | `cid-open-gateway` opens the CID on an IPFS gateway |
-| bookmark | built-in | `cid-bookmark-jump`, `cid--bookmark-make-record` |
-| rx | built-in | `rx-define` for CID pattern matching |
-| thingatpt | built-in | `thing-at-point` integration for `cid` type |
-| ol (org) | soft | Org link support via `ol-cid.el` (opt-in load) |
-| embark | soft | Embark actions via `embark-cid.el` (opt-in load) |
+|Dependency   |Required?|Why                                                |
+|-------------|---------|---------------------------------------------------|
+|Emacs 30.1   |yes      |`cl-defstruct`, `string-replace`, `defvar-keymap`  |
+|magit-section|yes      |collapsible sections via `magit-insert-section`    |
+|browse-url   |built-in |`cid-open-gateway` opens the CID on an IPFS gateway|
+|bookmark     |built-in |`cid-bookmark-jump`, `cid--bookmark-make-record`   |
+|rx           |built-in |`rx-define` for CID pattern matching               |
+|thingatpt    |built-in |`thing-at-point` integration for `cid` type        |
+|ol (org)     |soft     |Org link support via `ol-cid.el` (opt-in load)     |
+|embark       |soft     |Embark actions via `embark-cid.el` (opt-in load)   |
 
 ## Architecture
 
-### `cid-mode.el` (~905 lines)
+### `cid-mode.el` (~917 lines)
 
 The mode is organized into these sections:
 
@@ -45,7 +45,7 @@ The mode is organized into these sections:
 2. **Constants** — Multibase, multicodec, and multihash tables
    (canonical names from the `go-multicodec` / `go-multibase` tables
    vendored in the IPFS Kubo source)
-3. **Rx patterns** — `cid-char`, `cid-v0`, `cid-v0-strict` (compiled
+3. **Rx patterns** — `cid-char`, `cid-v0` (compiled
    `rx-define` patterns for CID detection; avoids inline regex strings
    in `string-match-p`)
 4. **Encoding decoders** — base58btc, base32 (lower/upper/nopad), base16
@@ -172,7 +172,7 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 ## Testing
 
 ```bash
-# Run the full test suite (61 tests):
+# Run the full test suite (63 tests):
 emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
 
 # Smoke test decode commands:
@@ -184,28 +184,28 @@ emacs -Q --batch -L . -l cid-mode.el \
 
 ### Test vectors
 
-| Vector | Type | Description |
-|---|---|---|
-| `QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T` | CIDv0 | Big Buck Bunny, sha2-256, dag-pb |
-| `bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi` | CIDv1 | base32 lowercase nopad, sha2-256, dag-pb |
+|Vector                                                       |Type |Description                             |
+|-------------------------------------------------------------|-----|----------------------------------------|
+|`QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T`             |CIDv0|Big Buck Bunny, sha2-256, dag-pb        |
+|`bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi`|CIDv1|base32 lowercase nopad, sha2-256, dag-pb|
 
 ## Keybindings
 
 ### `cid-mode-map` (global)
 
-| Key | Command | Description |
-|---|---|---|
-| `TAB` | `magit-section-toggle` | Toggle collapse on section at point |
-| `S-TAB` | `magit-section-cycle` | Collapse all sections at current level |
-| `n`/`p` | `magit-section-forward`/`backward` | Navigate between sections |
-| `M-n`/`M-p` | `magit-section-forward-sibling`/`backward-sibling` | Navigate between siblings |
-| `^` | `magit-section-up` | Go to parent section |
-| `1`..`4` | `magit-section-show-level-{1..4}` | Show sections up to level N |
-| `M-1`..`M-4` | `magit-section-show-level-{1..4}-all` | Show all sections up to level N |
-| `g` | `cid-revert` | Re-render the CID buffer |
-| `w` | `cid-copy-cid` | Copy CID string to kill ring |
-| `b` | `cid-open-gateway` | Open CID on IPFS gateway |
-| `q` | `quit-window` | Close the CID buffer (inherited from `magit-section-mode-map`) |
+|Key         |Command                                           |Description                                                   |
+|------------|--------------------------------------------------|--------------------------------------------------------------|
+|`TAB`       |`magit-section-toggle`                            |Toggle collapse on section at point                           |
+|`S-TAB`     |`magit-section-cycle`                             |Collapse all sections at current level                        |
+|`n`/`p`     |`magit-section-forward`/`backward`                |Navigate between sections                                     |
+|`M-n`/`M-p` |`magit-section-forward-sibling`/`backward-sibling`|Navigate between siblings                                     |
+|`^`         |`magit-section-up`                                |Go to parent section                                          |
+|`1`..`4`    |`magit-section-show-level-{1..4}`                 |Show sections up to level N                                   |
+|`M-1`..`M-4`|`magit-section-show-level-{1..4}-all`             |Show all sections up to level N                               |
+|`g`         |`cid-revert`                                      |Re-render the CID buffer                                      |
+|`w`         |`cid-copy-cid`                                    |Copy CID string to kill ring                                  |
+|`b`         |`cid-open-gateway`                                |Open CID on IPFS gateway                                      |
+|`q`         |`quit-window`                                     |Close the CID buffer (inherited from `magit-section-mode-map`)|
 
 ### Section-specific keymaps
 
@@ -215,25 +215,25 @@ These keymaps are auto-discovered by magit-section via the naming convention
 **`magit-cid-field-section-map`** — active on individual field lines
 (Algorithm, Digest Size, Digest (hex), etc.):
 
-| Key | Command | Description |
-|---|---|---|
-| `y` | `cid-copy-field-value` | Copy field value to kill ring |
-| `RET` | `cid-copy-field-value` | Copy field value to kill ring |
+|Key  |Command               |Description                  |
+|-----|----------------------|-----------------------------|
+|`y`  |`cid-copy-field-value`|Copy field value to kill ring|
+|`RET`|`cid-copy-field-value`|Copy field value to kill ring|
 
 **`magit-cid-section-section-map`** — active on section headings
 (Identity, Multihash, Sizes, etc.):
 
-| Key | Command | Description |
-|---|---|---|
-| `RET` | `magit-section-toggle` | Toggle collapse/expand of section |
+|Key  |Command               |Description                      |
+|-----|----------------------|---------------------------------|
+|`RET`|`magit-section-toggle`|Toggle collapse/expand of section|
 
 ### Embark keybindings (`embark-cid-map`)
 
-| Key | Command | Description |
-|---|---|---|
-| `RET` | `embark-cid-decode` | Decode CID in `cid-mode` buffer |
-| `w` | `embark-cid-copy` | Copy CID to kill ring |
-| `b` | `embark-cid-open-gateway` | Open CID on IPFS gateway |
+|Key  |Command                  |Description                    |
+|-----|-------------------------|-------------------------------|
+|`RET`|`embark-cid-decode`      |Decode CID in `cid-mode` buffer|
+|`w`  |`embark-cid-copy`        |Copy CID to kill ring          |
+|`b`  |`embark-cid-open-gateway`|Open CID on IPFS gateway       |
 
 ## Conventions
 
@@ -333,10 +333,10 @@ with the `raw` codec (0x55) and base58btc multibase encoding (`z` prefix).
 
 The multihash algorithm is auto-detected from the digest length:
 
-| Hex chars | Bytes | Algorithm | Code |
-|---|---|---|---|
-| 40 | 20 | sha1 | 0x11 |
-| 64 | 32 | sha2-256 | 0x12 |
+|Hex chars|Bytes|Algorithm|Code|
+|---------|-----|---------|----|
+|40       |20   |sha1     |0x11|
+|64       |32   |sha2-256 |0x12|
 
 When called interactively (`M-x cid-decode-from-raw`), prompts for the hex
 digest and displays the resulting CID in a `cid-mode` buffer (via
@@ -364,8 +364,9 @@ The `ipfs://` and `ipns://` URL schemes are registered in
 `browse-url-default-handlers` (not the user-reserved
 `browse-url-handlers`).  The handler `cid--browse-ipfs` extracts
 the CID or IPNS name and opens it on the configured gateway.
-Registered via `with-eval-after-load 'browse-url` so it only
-activates when `browse-url` is actually loaded.
+`cid-mode.el` requires `browse-url` at load time, so the handlers
+are registered directly at load (with `;;;###autoload` for the
+autoloads file).
 
 ### Gateway fallback
 

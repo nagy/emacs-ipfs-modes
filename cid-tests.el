@@ -23,6 +23,8 @@
 ;;
 ;; Then: M-x ert RET cid
 
+;;; Code:
+
 (require 'cid-mode)
 (require 'ert)
 (require 'cl-lib)

@@ -391,9 +391,9 @@ are decoded as base58btc and must parse as a multihash; CIDv1
 strings must decode to a version/codec/multihash framing.  A
 candidate is accepted only if it parses without errors, so a word
 that merely shares a multibase prefix but does not decode cleanly
-(e.g. \"crate\", \"cafebabe\") is rejected.  Note that base32
-CIDs legitimately contain `l`, so no ambiguous-character exclusion
-is applied."
+is rejected (for example \"crate\" or \"cafebabe\").  Note that
+base32 CIDs legitimately contain `l`, so no ambiguous-character
+exclusion is applied."
   (declare (side-effect-free t))
   (cond
    ;; CIDv0: exactly 46 base58 chars starting with Qm
@@ -444,7 +444,7 @@ Returns `unknown-prefix' for unrecognized first characters."
    (t 'unknown-prefix)))
 
 (defun cid--parse-v0 (str raw-bytes)
-  "Parse a CIDv0 from RAW-BYTES (decoded base58btc).
+  "Parse CIDv0 string STR from RAW-BYTES (decoded base58btc).
 Returns a `cid-info' struct, or nil if invalid."
   (let ((errors nil))
     ;; CIDv0: the raw bytes are just the multihash itself.
@@ -481,7 +481,7 @@ Returns a `cid-info' struct, or nil if invalid."
          :errors errors)))))
 
 (defun cid--parse-v1 (str prefix raw-bytes)
-  "Parse a CIDv1 from RAW-BYTES with multibase PREFIX.
+  "Parse CIDv1 string STR with multibase PREFIX from RAW-BYTES.
 Returns a `cid-info' struct, or nil if invalid."
   (let ((errors nil))
     ;; CIDv1: [version-varint] [codec-varint] [multihash-varint digest...]
@@ -906,11 +906,12 @@ the configured IPFS gateway."
     (browse-url (format "%s/%s/%s" cid-gateway-url scheme content))))
 
 ;;;###autoload
-(with-eval-after-load 'browse-url
-  (add-to-list 'browse-url-default-handlers
-               (cons "\\`ipfs://" #'cid--browse-ipfs))
-  (add-to-list 'browse-url-default-handlers
-               (cons "\\`ipns://" #'cid--browse-ipfs)))
+;; browse-url is required above, so the handlers can be registered
+;; directly at load time (no with-eval-after-load needed).
+(add-to-list 'browse-url-default-handlers
+             (cons "\\`ipfs://" #'cid--browse-ipfs))
+(add-to-list 'browse-url-default-handlers
+             (cons "\\`ipns://" #'cid--browse-ipfs))
 
 (provide 'cid-mode)
 ;;; cid-mode.el ends here

@@ -5,7 +5,6 @@
 ;; Author: Daniel Nagy
 ;; Version: 0.1.0
 ;; Keywords: tools, ipfs, org
-;; Package-Requires: ((emacs "30.1") (org "9.0"))
 ;; URL: https://github.com/nagy/emacs-ipfs-modes
 
 ;; This file is free software: you can redistribute it and/or modify
