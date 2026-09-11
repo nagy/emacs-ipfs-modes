@@ -1,12 +1,22 @@
+# emacs-screenshot.nix — render the README screenshot.
+#
+# Composes the package under test with a fixed CID, boots Emacs under
+# Xvfb, drives it to the `CID: ...' buffer and exports the frame.  The
+# package is passed in by the flake so this expression never
+# re-evaluates nix/default.nix.
+
 {
   pkgs ? import <nixpkgs> { },
   lib ? pkgs.lib,
   emacs ? pkgs.emacs,
+  # The built cid-mode package, needed inside the screenshot Emacs.
+  cidModeEl,
+  # lib from the nur-packages flake input; supplies mkGitRepository,
+  # which turns the SVG into a bare `.git' directory for the README.
+  nurLib,
 }:
 
 let
-  cidMode = pkgs.callPackage ./default.nix { inherit emacs; };
-
   # CID for Big Buck Bunny content
   testCid = "bafybeigagd5nmnn2iys2f3doro7ydrevyr2mzarwidgadawmamiteydbzi";
 in
@@ -22,11 +32,15 @@ rec {
       {
         NIX_PATH = "nixpkgs=${pkgs.path}";
         NIX_STATE_DIR = "/build/nix-state";
+        # The sandbox has no dconf/gsettings database; without this the
+        # GTK init makes GLib criticals noisy (and Emacs sometimes exits
+        # before the frame is exported).
+        GSETTINGS_BACKEND = "memory";
         nativeBuildInputs = [
           (emacs.pkgs.withPackages (epkgs: [
             epkgs.modus-themes
             epkgs.marginalia
-            cidMode
+            cidModeEl
           ]))
           pkgs.xvfb-run
           pkgs.iosevka
@@ -161,5 +175,5 @@ rec {
         })
       );
 
-  gitrepo = pkgs.nur.repos.nagy.lib.mkGitRepository svg;
+  gitrepo = nurLib.mkGitRepository svg;
 }

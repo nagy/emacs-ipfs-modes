@@ -17,8 +17,10 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
 |`embark-cid.el`|Embark target finder and actions for CIDs (~81 lines)|
 |`cid-tests.el` |ERT test suite (~629 lines, 63 tests)                |
-|`default.nix`  |Nix build with `melpaBuild`                          |
-|`shell.nix`    |Nix dev shell with Emacs and dependencies            |
+|`flake.nix`    |Flake outputs; package expressions live under `nix/` |
+|`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
+|`nix/default.nix`|Nix build with `melpaBuild`                        |
+|`nix/emacs-screenshot.nix`|Nix expression for screenshot generation  |
 
 ## Dependencies
 
@@ -148,14 +150,26 @@ CID string
 ## Building
 
 ```bash
-# Nix (local)
-nix-build -E "with import <nixpkgs> {}; (emacs.pkgs.callPackage ./. {})"
+# Nix (flake)
+nix build                       # build
+nix flake check                 # build + ERT suite
+nix build .#screenshot          # regenerate README screenshot
+nix build .#gitrepo             # bare .git dir holding the screenshot
+nix develop                     # dev shell (Emacs)
 
 # Without Nix
 emacs -Q --batch -f batch-byte-compile cid-mode.el
 emacs -Q --batch -L . -f batch-byte-compile ol-cid.el
 emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
 ```
+
+Flake outputs: `packages.cid-mode` (= `default`) is `nix/default.nix`;
+its `checkPhase` runs the ERT suite (adding magit-section and its
+transitive elpa dependencies to `load-path`, since `melpaBuild` does
+not activate them before `checkPhase`).  `packages.screenshot` and
+`packages.gitrepo` come from `nix/emacs-screenshot.nix`, which uses
+`mkGitRepository` imported from the `nur-packages` flake input (not
+vendored).
 
 Byte-compile with warnings as errors (wired into the Nix build
 via `turnCompilationWarningToError = true`):
@@ -508,15 +522,16 @@ CID buffers set `default-directory` to `temporary-file-directory`
 instead of inheriting the user's current directory.
 ### Screenshot via Nix
 
-`emacs-screenshot.nix` provides a reproducible way to render CID decode
+`nix/emacs-screenshot.nix` provides a reproducible way to render CID decode
 output as a PNG image, following the same pattern as `~/nixos.el` and
-`~/crate.el`.  It builds `cid-mode` via `default.nix`, launches an
+`~/crate.el`.  It builds `cid-mode` via `nix/default.nix` (passed in by
+the flake), launches an
 Emacs frame under `xvfb-run` with the modus-operandi theme and Iosevka
 font, decodes the Big Buck Bunny CID, makes the buffer the sole window,
 sizes the frame to fit, and captures the frame with `x-export-frames`.
 
 ```
-nix build -f emacs-screenshot.nix png --out-link /tmp/screenshot
+nix build .#screenshot --out-link /tmp/screenshot
 ```
 
 Available outputs:
