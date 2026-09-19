@@ -155,13 +155,14 @@ nix build                       # build
 nix flake check                 # build + ERT suite
 nix build .#screenshot          # regenerate README screenshot
 nix build .#gitrepo             # bare .git dir holding the screenshot
-nix develop                     # dev shell (Emacs)
 
 # Without Nix
 emacs -Q --batch -f batch-byte-compile cid-mode.el
 emacs -Q --batch -L . -f batch-byte-compile ol-cid.el
 emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
 ```
+
+Dev shell: `nix develop` (Emacs).
 
 Flake outputs: `packages.cid-mode` (= `default`) is `nix/default.nix`;
 its `checkPhase` runs the ERT suite (adding magit-section and its
