@@ -1,0 +1,187 @@
+#+title:    cid-mode - decode and browse IPFS Content Identifiers in Emacs
+#+author:   Daniel Nagy
+#+language: en
+
+=cid-mode= decodes and browses IPFS Content Identifiers (CIDs),
+similar to the online tool at https://cid.ipfs.tech/.
+
+A CID is a self-describing content address.  The mode shows its
+components: version, multibase encoding, multicodec, multihash
+algorithm and digest, the raw bytes and the CIDv0 equivalent.  The
+buffer renders as collapsible =magit-section= groups.  Decoding runs
+locally: the mode touches the network only when a command opens a
+gateway URL.
+
+* Install
+
+The package name matches the library and the major mode:
+=cid-mode=.  Configure it with =use-package=:
+
+#+begin_src elisp
+(use-package cid-mode
+  :bind (("C-c c d" . cid-decode-at-point)
+         ("C-c c D" . cid-decode))
+  :custom
+  (cid-gateway-url "https://ipfs.io"))
+#+end_src
+
+Without =use-package=:
+
+#+begin_src elisp
+(require 'cid-mode)
+#+end_src
+
+Every command carries an autoload cookie, so a package-manager install
+reaches =M-x cid-decode= without an explicit require.
+
+** Nix
+
+The flake exports the package as =cid-mode=:
+
+#+begin_src nix
+inputs.emacs-ipfs-modes.url = "github:nagy/emacs-ipfs-modes";
+#+end_src
+
+#+begin_src nix
+emacs.withPackages (p: [ inputs.emacs-ipfs-modes.packages.${system}.cid-mode ])
+#+end_src
+
+The expression also takes an override, for another Emacs:
+
+#+begin_src nix
+inputs.emacs-ipfs-modes.packages.${system}.cid-mode.override {
+  emacs = pkgs.emacs31;
+}
+#+end_src
+
+* Usage
+
+| Command                      | Purpose                                                                     |
+|------------------------------+-----------------------------------------------------------------------------|
+| =M-x cid-decode=               | Prompt for a CID string and display its components                          |
+| =M-x cid-decode-at-point=      | Decode the CID at point in any buffer                                       |
+| =M-x cid-decode-from-raw=      | Build a CIDv1 with the raw codec from a hex digest; non-interactively returns the string |
+| =M-x cid-revert=               | Render the buffer again                                                     |
+| =M-x cid-copy-cid=             | Copy the CID string to the kill ring                                        |
+| =M-x cid-copy-field-value=     | Copy the value of the field at point                                        |
+| =M-x cid-open-gateway=         | Open the CID on =cid-gateway-url=                                             |
+| =M-x cid-bookmark-jump=        | Jump to a CID bookmark                                                      |
+
+The point commands read the CID through the =cid= thing type, so they
+work in a log line, a mail, a PDF comment or an Org file.  A CID with
+trailing punctuation still resolves.
+
+* Key bindings
+
+| Key       | Command                      | Description                        |
+|-----------+------------------------------+------------------------------------|
+| =RET=, =y=  | =cid-copy-field-value=         | copy the field value at point      |
+| =TAB=       | =magit-section-toggle=         | fold or unfold the section         |
+| =S-TAB=     | =magit-section-cycle-global=   | fold or unfold every section       |
+| =M-TAB=     | =magit-section-cycle=          | fold the section and its children  |
+| =g=         | =cid-revert=                   | render the value again             |
+| =w=         | =cid-copy-cid=                 | copy the CID string                |
+| =b=         | =cid-open-gateway=             | open the CID on the gateway        |
+| =q=         | =quit-window=                  | bury the buffer                    |
+
+A field line copies its value on =RET=, not only the label.  The
+section headings feed Imenu, so =imenu= lists every section.
+
+* Buffers and bookmarks
+
+The buffer name holds the CID: =CID: <cid>=.  Decoding the same CID
+again reuses the buffer.  =C-x r m= stores a bookmark, because the
+buffer installs a bookmark handler, and the bookmark displays as
+=CID: <cid>=.
+
+* Customization
+
+=M-x customize-group cid= reaches every option and face:
+
+- =cid-gateway-url= -- gateway base URL.  The default reads the
+  =IPFS_GATEWAY= environment variable, then falls back to
+  =https://ipfs.io=
+- =cid-hex-bytes-per-line= -- bytes per line in the raw hex dump
+  (=16= by default)
+- =cid-sections-hook= -- the functions that insert the sections.
+  Remove an entry to hide a section, reorder it to move the section
+- =cid-decode-hook= -- runs after the buffer renders, with =cid--info=
+  bound.  Use it for extra decoration; =cid-mode-hook= runs before the
+  data exists
+- =cid-header-face=, =cid-section-face=, =cid-field-face= -- the faces
+  of the buffer
+
+#+begin_src elisp
+(use-package cid-mode
+  :custom
+  (cid-hex-bytes-per-line 32)
+  :config
+  (add-hook 'cid-decode-hook
+            (lambda () (setq-local truncate-lines t))))
+#+end_src
+
+* URL schemes
+
+=cid-mode.el= registers handlers for =ipfs://= and =ipns://= on
+=browse-url-default-handlers=:
+
+```
+ipfs://<cid>[/path]
+ipns://<name>[/path]
+```
+
+Both open =cid-gateway-url=.  The handlers come from the autoload file,
+so the schemes work before the first decode.
+
+* Org links
+
+The =cid:= link type opens, stores and exports CIDs:
+
+```
+[[cid:QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco][my CID]]
+[[cid:bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi]]
+```
+
+- =C-c C-l= in an Org buffer prompts for a CID, through =cid--org-complete=
+- =C-c l= in a =cid-mode= buffer stores the current CID
+- The HTML and LaTeX exports render the gateway URL
+
+The link type loads when Org loads, after =cid-mode= loads.  Load it
+earlier with:
+
+#+begin_src elisp
+(with-eval-after-load 'org
+  (require 'ol-cid))
+#+end_src
+
+* Embark
+
+=embark-cid.el= registers =ipfs-cid= as an Embark target, with three
+actions:
+
+| Key   | Command                  | Description             |
+|-------+--------------------------+-------------------------|
+| =RET=   | =embark-cid-decode=        | decode the CID          |
+| =w=     | =embark-cid-copy=          | copy the CID            |
+| =b=     | =embark-cid-open-gateway= | open it on the gateway  |
+
+The registrations carry an autoload cookie on a deferred
+=with-eval-after-load 'embark=, so an installed package needs no
+require.  A manual load stays possible:
+
+#+begin_src elisp
+(require 'embark-cid)
+#+end_src
+
+* Testing
+
+#+begin_src sh
+emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+The Nix build runs the same suite in its check phase, with the
+=magit-section= dependencies on the load path.
+
+* License
+
+AGPL-3.0-or-later.  See =LICENSE=.

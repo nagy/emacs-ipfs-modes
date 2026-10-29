@@ -16,7 +16,8 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
 |`embark-cid.el`|Embark target finder and actions for CIDs (~81 lines)|
-|`cid-tests.el` |ERT test suite (~629 lines, 63 tests)                |
+|`cid-tests.el` |ERT test suite (~660 lines, 64 tests)                |
+|`README.org`   |Install, `use-package` recipe, commands, keys, options |
 |`flake.nix`    |Flake outputs; package expressions live under `nix/` |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
 |`nix/default.nix`|Nix build with `melpaBuild`                        |
@@ -251,6 +252,29 @@ These keymaps are auto-discovered by magit-section via the naming convention
 |`b`  |`embark-cid-open-gateway`|Open CID on IPFS gateway       |
 
 ## Conventions
+
+### Package name and the entry library
+
+The package name matches the library, the provided feature and the
+major mode: `pname = "cid-mode"` in `nix/default.nix`, `cid-mode.el`
+in the source.  `use-package SYMBOL` expands to `(require SYMBOL)`
+and `:ensure t` looks up the package named by SYMBOL, so the three
+names must agree.  Users configure the package through
+`(use-package cid-mode ...)`, with `M-x customize-group cid` for the
+options and faces.
+
+The package ships one mode, so it takes the mode name.  Do not add a
+suite entry such as `ipfs-modes` while `cid-mode` stays the only
+mode: a package name that names a plan confuses the `use-package`
+lookup and hides the mode.  If a second mode lands in this
+repository, rename the package then and declare the old name with
+`:old-names` in the MELPA recipe.
+
+Every user-facing command keeps its `;;;###autoload` cookie, and
+`cid-tests.el` checks them in `cid-autoloads`.  Add a new command
+there when adding it to `cid-mode.el`.  The autoload file also
+registers the `ipfs://`/`ipns://` handlers and defers the `ol-cid`
+require, so an installed package needs no explicit require.
 
 ### `defvar-keymap` with `:parent`
 

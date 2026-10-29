@@ -625,5 +625,36 @@
     (should (eq bookmark-make-record-function #'cid--bookmark-make-record))))
 
 
+;;; Autoloads
+
+(ert-deftest cid-autoloads ()
+  "Every user-facing entry point carries an autoload cookie.
+A fresh install must reach `cid-decode' and friends without an
+explicit require, and the URL handlers must register at startup."
+  (with-temp-buffer
+    (insert-file-contents (expand-file-name "cid-mode.el"))
+    (let ((source (buffer-string)))
+      (dolist (entry '("cid-decode" "cid-decode-at-point"
+                       "cid-decode-from-raw" "cid-bookmark-jump"))
+        (should (string-match-p
+                 (format "^;;;###autoload\n(\\(?:defun\\|defmacro\\) %s\\b"
+                         (regexp-quote entry))
+                 source))))
+    ;; Both schemes come from the autoload file, so `ipfs://' and
+    ;; `ipns://' work before the first decode.
+    (goto-char (point-min))
+    (should (= 2 (how-many "^(add-to-list 'browse-url-default-handlers$")))
+    (goto-char (point-min))
+    (should (search-forward "\n;;;###autoload\n;; browse-url is required above"
+                            nil t))
+    ;; The Org link type loads with Org, not with the first decode.
+    (goto-char (point-min))
+    (should (search-forward
+             "(with-eval-after-load 'org\n  (require 'ol-cid nil t))"
+             nil t))
+    (dolist (scheme '("\\`ipfs://" "\\`ipns://"))
+      (should (assoc scheme browse-url-default-handlers)))))
+
+
 (provide 'cid-tests)
 ;;; cid-tests.el ends here
