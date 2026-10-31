@@ -36,9 +36,10 @@
 
 ;;; Code:
 
-(declare-function cid--bounds "cid-mode")
-(declare-function cid-decode "cid-mode")
-(defvar cid-gateway-url)
+;; `cid--bounds' has no autoload cookie, so `declare-function' would
+;; not load it.  Load the package.
+(require 'cid-mode)
+
 (defvar embark-keymap-alist)
 (defvar embark-target-finders)
 

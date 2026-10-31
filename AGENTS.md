@@ -452,14 +452,23 @@ Bookmark jump functions declare their handler type for the bookmark UI:
 
 ### Byte-compiler silencing
 
-Cross-file function references in `ol-cid.el` use `declare-function`.
-External vars from `cid-mode.el` that `ol-cid.el` references are
-declared with value-less `defvar` to silence the byte-compiler without
-clobbering the real value:
+`declare-function` silences the byte-compiler only.  It has no runtime
+effect and creates no autoload.  Use it only when the target function
+carries its own `;;;###autoload` cookie in the package autoloads file,
+as `cid-decode` does:
 
 ```elisp
-(declare-function cid-decode "cid-mode")
+(declare-function cid-decode "cid-mode")     ; ol-cid.el
 (defvar cid--info)
+```
+
+When the target is a private function without an autoload cookie,
+`declare-function` leaves a void function at runtime.  Load the
+package instead.  `embark-cid.el` calls `cid--bounds`, which has no
+autoload cookie, so it requires the package:
+
+```elisp
+(require 'cid-mode)
 ```
 
 ### `cl-lib` prefix for Emacs functions
