@@ -15,8 +15,8 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |---------------|-----------------------------------------------------|
 |`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
-|`embark-cid.el`|Embark target finder and actions for CIDs (~81 lines)|
-|`cid-tests.el` |ERT test suite (~660 lines, 64 tests)                |
+|`embark-cid.el`|Embark target finder and actions for CIDs (~89 lines)|
+|`cid-tests.el` |ERT test suite (~683 lines, 65 tests)                |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
 |`flake.nix`    |Flake outputs; package expressions live under `nix/` |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
@@ -83,7 +83,7 @@ Opt-in Org link module.  Defines the `cid:` link type:
 - **Export** (`cid-org-export`) — renders as an IPFS gateway URL in
   HTML/LaTeX
 
-### `embark-cid.el` (~83 lines)
+### `embark-cid.el` (~89 lines)
 
 Opt-in Embark module.  Registers `ipfs-cid` as a target type:
 
@@ -92,7 +92,24 @@ Opt-in Embark module.  Registers `ipfs-cid` as a target type:
 - **Actions** — `RET` (decode in `cid-mode`), `w` (copy to kill ring),
   `b` (open on IPFS gateway)
 
-Loaded by user with `(require 'embark-cid)`.
+Every entry point carries `;;;###autoload`: the three commands, the
+target finder, and the registration form below it.  The autoloads file
+therefore registers the finder and the keymap as soon as Embark loads,
+and the first `embark-act' on a CID loads `embark-cid.el' on demand:
+
+```elisp
+;;;###autoload
+(with-eval-after-load 'embark
+  (add-hook 'embark-target-finders #'embark-cid-target-at-point)
+  (add-to-list 'embark-keymap-alist '(ipfs-cid . embark-cid-map)))
+```
+
+`cid-tests.el` checks these cookies in `embark-cid-autoloads`.  Users
+can also load the module by hand:
+
+```elisp
+(require 'embark-cid)
+```
 
 Loaded by `cid-mode.el` via deferred `with-eval-after-load` (no-op if
 ol-cid.el is not installed).  Users can also activate it manually:

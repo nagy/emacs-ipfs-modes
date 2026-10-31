@@ -655,6 +655,29 @@ explicit require, and the URL handlers must register at startup."
     (dolist (scheme '("\\`ipfs://" "\\`ipns://"))
       (should (assoc scheme browse-url-default-handlers)))))
 
+(ert-deftest embark-cid-autoloads ()
+  "Embark entry points carry autoload cookies.
+A fresh install must reach `embark-cid-copy' and friends without an
+explicit require, and loading Embark must load the module."
+  (with-temp-buffer
+    (insert-file-contents (expand-file-name "embark-cid.el"))
+    (let ((source (buffer-string)))
+      (dolist (entry '("embark-cid-target-at-point" "embark-cid-decode"
+                       "embark-cid-copy" "embark-cid-open-gateway"))
+        (should (string-match-p
+                 (format "^;;;###autoload\n(\\(?:defun\\|defmacro\\) %s\\b"
+                         (regexp-quote entry))
+                 source))))
+    ;; The registration form comes from the autoloads file, so Embark
+    ;; finds CIDs before the module is loaded.
+    (goto-char (point-min))
+    (should (search-forward
+             (concat "\n;;;###autoload\n"
+                     "(with-eval-after-load 'embark\n"
+                     "  (add-hook 'embark-target-finders "
+                     "#'embark-cid-target-at-point)")
+             nil t))))
+
 
 (provide 'cid-tests)
 ;;; cid-tests.el ends here

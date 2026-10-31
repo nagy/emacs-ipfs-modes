@@ -26,7 +26,11 @@
 ;; Embark integration for CID actions.  When point is on a CID,
 ;; `embark-act' offers actions: decode, copy, open on gateway.
 ;;
-;; This module is opt-in:
+;; Every entry point carries an autoload cookie, so the module needs no
+;; explicit require.  The finder and the commands are autoloaded, and the
+;; registration form below runs from the autoloads file, so the first
+;; `embark-act' on a CID loads this file on demand.  Users can also load
+;; the module by hand:
 ;;
 ;;   (require 'embark-cid)
 
@@ -40,6 +44,7 @@
 
 ;;; Target finder and actions
 
+;;;###autoload
 (defun embark-cid-target-at-point ()
   "Target a CID at point for Embark."
   (when-let* ((bounds (cid--bounds))
@@ -47,17 +52,20 @@
                         (car bounds) (cdr bounds))))
     `(ipfs-cid ,cid-str ,(car bounds) . ,(cdr bounds))))
 
+;;;###autoload
 (defun embark-cid-decode (cid)
   "Open a CID decoding buffer for CID."
   (interactive "sCID: ")
   (cid-decode cid))
 
+;;;###autoload
 (defun embark-cid-copy (cid)
   "Copy CID to the kill ring."
   (interactive "sCID: ")
   (kill-new cid)
   (message "Copied: %s" cid))
 
+;;;###autoload
 (defun embark-cid-open-gateway (cid)
   "Open CID on the configured IPFS gateway."
   (interactive "sCID: ")
