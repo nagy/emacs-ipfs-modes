@@ -446,6 +446,7 @@ Returns `unknown-prefix' for unrecognized first characters."
 (defun cid--parse-v0 (str raw-bytes)
   "Parse CIDv0 string STR from RAW-BYTES (decoded base58btc).
 Returns a `cid-info' struct, or nil if invalid."
+  (declare (pure t) (side-effect-free t))
   (let ((errors nil))
     ;; CIDv0: the raw bytes are just the multihash itself.
     ;; Implicit: version=0, codec=dag-pb (0x70).
@@ -483,6 +484,7 @@ Returns a `cid-info' struct, or nil if invalid."
 (defun cid--parse-v1 (str prefix raw-bytes)
   "Parse CIDv1 string STR with multibase PREFIX from RAW-BYTES.
 Returns a `cid-info' struct, or nil if invalid."
+  (declare (pure t) (side-effect-free t))
   (let ((errors nil))
     ;; CIDv1: [version-varint] [codec-varint] [multihash-varint digest...]
     (when-let* ((v (cid--decode-varint raw-bytes 0)))

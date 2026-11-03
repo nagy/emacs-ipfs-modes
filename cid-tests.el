@@ -612,6 +612,21 @@
     (cid-mode)
     (should-error (cid-open-gateway) :type 'user-error)))
 
+;;; Purity declarations
+
+(ert-deftest cid-parsers-declare-purity ()
+  "The CID parsers declare purity, so the compiler can fold them.
+Both parsers depend only on their arguments and the constant
+multibase/multicodec/multihash tables."
+  (with-temp-buffer
+    (insert-file-contents (expand-file-name "cid-mode.el"))
+    (dolist (entry '("cid--parse-v0" "cid--parse-v1"))
+      (goto-char (point-min))
+      (should (re-search-forward
+               (concat "^(defun " (regexp-quote entry) " "
+                       "[^\n]*\n[^\n]*\n[^\n]*\n  (declare (pure t) "
+                       "(side-effect-free t))") nil t)))))
+
 
 ;;; Major mode
 

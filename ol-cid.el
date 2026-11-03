@@ -58,6 +58,7 @@
   "Export a `cid:' link to an IPFS gateway URL.
 PATH is the CID string, DESCRIPTION is the link text,
 BACKEND is the export backend."
+  (declare (side-effect-free t))
   (let ((url (format "%s/ipfs/%s" cid-gateway-url (url-hexify-string path)))
         (desc (or description path)))
     (pcase backend

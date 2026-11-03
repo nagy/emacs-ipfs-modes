@@ -16,7 +16,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
 |`embark-cid.el`|Embark target finder and actions for CIDs (~89 lines)|
-|`cid-tests.el` |ERT test suite (~683 lines, 65 tests)                |
+|`cid-tests.el` |ERT test suite (~700 lines, 66 tests)                |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
 |`flake.nix`    |Flake outputs; package expressions live under `nix/` |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
@@ -205,7 +205,7 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 ## Testing
 
 ```bash
-# Run the full test suite (63 tests):
+# Run the full test suite (66 tests):
 emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
 
 # Smoke test decode commands:
@@ -359,8 +359,17 @@ one buffer-local variable (`cid--info`), making `revert-buffer` trivial.
 ### Pure decoder functions
 
 All decoding/parsing functions declare `(side-effect-free t)` where
-applicable.  Only `cid--display` and the interactive commands have side
-effects.
+applicable.  Decoders that depend only on their arguments and the
+constant multibase/multicodec/multihash tables also declare `(pure t)`,
+so the byte compiler can fold them:
+
+```elisp
+(declare (pure t) (side-effect-free t))
+```
+
+Only `cid--display` and the interactive commands have side effects.
+Functions that read point or buffer text (`cid--bounds`,
+`cid--thing-at-point`) stay `side-effect-free` at most, never pure.
 
 ### Graceful error handling
 
