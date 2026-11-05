@@ -1,4 +1,4 @@
-;;; embark-cid.el --- Embark actions for IPFS Content Identifiers  -*- lexical-binding: t; -*-
+;;; embark-cid.el --- Embark actions for CIDs  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 

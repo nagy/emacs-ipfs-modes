@@ -1,4 +1,4 @@
-;;; cid-mode.el --- Decode and browse IPFS Content Identifiers  -*- lexical-binding: t; -*-
+;;; cid-mode.el --- Decode and browse IPFS CIDs  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -65,8 +65,8 @@
 (defcustom cid-gateway-url
   (or (getenv "IPFS_GATEWAY") "https://ipfs.io")
   "IPFS gateway URL for resolving CIDs.
-Falls back to the IPFS_GATEWAY environment variable, then to
-ipfs.io.  Used by `cid-open-gateway' to open a CID in a browser."
+The default value comes from the IPFS_GATEWAY environment variable,
+or from ipfs.io.  `cid-open-gateway' opens a CID at this gateway."
   :type 'string
   :group 'cid)
 
@@ -88,7 +88,7 @@ ipfs.io.  Used by `cid-open-gateway' to open a CID in a browser."
 (defcustom cid-decode-hook nil
   "Hook run after a CID buffer is fully rendered.
 The buffer is current and `cid--info' is set when this hook runs.
-Use this to modify the buffer after `cid-decode' finishes — unlike
+Use this to modify the buffer after `cid-decode' finishes.  Unlike
 `cid-mode-hook', `cid--info' is available here."
   :type 'hook
   :group 'cid)
@@ -181,18 +181,19 @@ or 0 for variable.")
   (seq bos (eval cid--v0-prefix-chars) (one-or-more cid-char) eos))
 
 (defvar cid--v0-prefix-chars "Qm"
-  "Characters a CIDv0 must start with.  `rx-define' evaluates at expansion time.")
+  "Characters a CIDv0 must start with.
+`rx-define' evaluates this at expansion time.")
 
 (defconst cid--thing-char-class "A-Za-z0-9"
   "Character class for skipping to CID boundaries.
-Used by `cid--bounds' for `skip-chars-forward/backward'.")
+Used by `cid--bounds' with `skip-chars-forward' and `skip-chars-backward'.")
 
 
 ;;; Base58 decoding
 
 (defun cid--base58-decode (str)
   "Decode base58btc STR to a byte vector.
-Returns nil if STR contains characters outside the base58 alphabet."
+Return nil if STR contains characters outside the base58 alphabet."
   (declare (side-effect-free t))
   (catch 'done
     (let ((alphabet cid--base58-alphabet)
@@ -226,7 +227,7 @@ Returns nil if STR contains characters outside the base58 alphabet."
 
 (defun cid--base32-decode (str alphabet)
   "Decode base32 STR using ALPHABET.
-Returns a byte vector, or nil on invalid input."
+Return a byte vector, or nil on invalid input."
   (declare (side-effect-free t))
   (let* ((clean (string-replace "=" "" str))
          (bits 0)
@@ -294,7 +295,7 @@ Returns a byte vector, or nil on invalid input."
 
 (defun cid--decode-varint (v pos)
   "Decode an unsigned varint from vector V starting at POS.
-Returns (VALUE . NEW-POS) or nil if there aren't enough bytes."
+Return (VALUE . NEW-POS) or nil if there are not enough bytes."
   (declare (side-effect-free t))
   (let ((value 0)
         (shift 0)
@@ -384,16 +385,15 @@ CIDv0 is always dag-pb + sha2-256, so the conversion is unambiguous."
 
 (defun cid--valid-cid-string-p (str)
   "Return non-nil if STR is a structurally valid CID.
-
-Cheap lexical checks first (v0: Qm + 46 base58 chars; v1: known
+Cheap lexical checks run first (v0: Qm + 46 base58 chars; v1: known
 multibase prefix, >= 3 chars), then a full decode: CIDv0 strings
-are decoded as base58btc and must parse as a multihash; CIDv1
-strings must decode to a version/codec/multihash framing.  A
-candidate is accepted only if it parses without errors, so a word
-that merely shares a multibase prefix but does not decode cleanly
-is rejected (for example \"crate\" or \"cafebabe\").  Note that
-base32 CIDs legitimately contain `l`, so no ambiguous-character
-exclusion is applied."
+decode as base58btc and must parse as a multihash; CIDv1 strings
+must decode to a version/codec/multihash framing.  The check
+accepts a candidate only if it parses without errors, so it rejects
+a word that merely shares a multibase prefix but does not decode
+cleanly (for example \"crate\" or \"cafebabe\").  Note that base32
+CIDs legitimately contain `l`, so no ambiguous-character exclusion
+applies."
   (declare (side-effect-free t))
   (cond
    ;; CIDv0: exactly 46 base58 chars starting with Qm
@@ -413,7 +413,7 @@ exclusion is applied."
 
 (defun cid--decode-base (str prefix)
   "Decode STR with multibase PREFIX character.
-Returns decoded byte vector, or nil on failure."
+Return decoded byte vector, or nil on failure."
   (declare (side-effect-free t))
   (cond
    ((null prefix)
@@ -430,8 +430,8 @@ Returns decoded byte vector, or nil on failure."
 
 (defun cid--detect-prefix (str)
   "Detect the multibase prefix of CID string STR.
-Returns the prefix character for CIDv1, or nil for CIDv0.
-Returns `unknown-prefix' for unrecognized first characters."
+Return the prefix character for CIDv1, or nil for CIDv0.
+Return `unknown-prefix' for unrecognized first characters."
   (declare (side-effect-free t))
   (cond
    ;; CIDv0: starts with Qm, base58btc, 46 chars
@@ -445,7 +445,7 @@ Returns `unknown-prefix' for unrecognized first characters."
 
 (defun cid--parse-v0 (str raw-bytes)
   "Parse CIDv0 string STR from RAW-BYTES (decoded base58btc).
-Returns a `cid-info' struct, or nil if invalid."
+Return a `cid-info' struct, or nil if invalid."
   (declare (pure t) (side-effect-free t))
   (let ((errors nil))
     ;; CIDv0: the raw bytes are just the multihash itself.
@@ -483,7 +483,7 @@ Returns a `cid-info' struct, or nil if invalid."
 
 (defun cid--parse-v1 (str prefix raw-bytes)
   "Parse CIDv1 string STR with multibase PREFIX from RAW-BYTES.
-Returns a `cid-info' struct, or nil if invalid."
+Return a `cid-info' struct, or nil if invalid."
   (declare (pure t) (side-effect-free t))
   (let ((errors nil))
     ;; CIDv1: [version-varint] [codec-varint] [multihash-varint digest...]
@@ -587,8 +587,9 @@ expected %d, got %d"
 (define-derived-mode cid-mode magit-section-mode "CID"
   "Major mode for displaying decoded IPFS Content Identifiers.
 
-\\{cid-mode-map}
-Use `M-x cid-decode' to decode a CID."
+To decode a CID, type \\[cid-decode].
+
+\\{cid-mode-map}"
   (setq-local revert-buffer-function #'cid-revert)
   (setq-local bookmark-make-record-function #'cid--bookmark-make-record))
 
@@ -814,7 +815,7 @@ When called interactively, prompt for the hex digest and display
 the resulting CID in a `cid-mode' buffer.  When called
 non-interactively, return the CIDv1 string.
 
-The multihash algorithm is auto-detected from the digest length:
+The digest length selects the multihash algorithm:
   40 hex chars (20 bytes) → sha1
   64 hex chars (32 bytes) → sha2-256"
   (interactive "sHex-encoded digest: ")
@@ -900,7 +901,7 @@ For `thing-at-point' integration."
 
 (defun cid--browse-ipfs (url &rest _)
   "Browse an ipfs:// or ipns:// URL.
-Extracts the CID or IPNS name from URL and opens it on
+Extract the CID or IPNS name from URL and open it on
 the configured IPFS gateway."
   (string-match "\\`\\(ipfs\\|ipns\\)://\\(.+\\)" url)
   (let ((scheme (match-string 1 url))

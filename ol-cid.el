@@ -1,4 +1,4 @@
-;;; ol-cid.el --- Org links to IPFS Content Identifiers  -*- lexical-binding: t; -*-
+;;; ol-cid.el --- Org links to IPFS CIDs  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
