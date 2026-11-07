@@ -18,9 +18,8 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`embark-cid.el`|Embark target finder and actions for CIDs (~89 lines)|
 |`cid-tests.el` |ERT test suite (~700 lines, 66 tests)                |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
-|`flake.nix`    |Flake outputs; package expressions live under `nix/` |
+|`flake.nix`    |Flake outputs; `melpaBuild` package plus screenshot wiring |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
-|`nix/default.nix`|Nix build with `melpaBuild`                        |
 |`nix/emacs-screenshot.nix`|Nix expression for screenshot generation  |
 
 ## Dependencies
@@ -182,13 +181,34 @@ emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
 
 Dev shell: `nix develop` (Emacs).
 
-Flake outputs: `packages.cid-mode` (= `default`) is `nix/default.nix`;
-its `checkPhase` runs the ERT suite (adding magit-section and its
-transitive elpa dependencies to `load-path`, since `melpaBuild` does
-not activate them before `checkPhase`).  `packages.screenshot` and
+Flake outputs: `packages.cid-mode` (= `default`) is the `melpaBuild`
+derivation defined inline in `flake.nix`;
+its `checkPhase` runs the ERT suite.  `melpaBuild` puts its
+`packageRequires` in `propagatedBuildInputs`, and the Emacs setup hook
+adds only `share/emacs/site-lisp`, not the `elpa/<pkg>-<version>`
+subdirectories.  So magit-section never reaches `load-path` by itself.
+The build defaults `emacsPackages` to a wrapped Emacs,
+`pkgs.emacsPackagesFor (emacs.pkgs.withPackages (_: [ magit-section ]))`,
+which carries the dependency and its closure on the load path.  The
+derivation wraps in `lib.makeOverridable`, so a consumer can swap the
+Emacs or the package set:
+
+```nix
+inputs.emacs-ipfs-modes.packages.${system}.cid-mode.override {
+  emacs = pkgs.emacs-nox;
+}
+```
+
+`packages.screenshot` and
 `packages.gitrepo` come from `nix/emacs-screenshot.nix`, which uses
 `mkGitRepository` imported from the `nur-packages` flake input (not
 vendored).
+
+The version string comes from the flake source info.  The commit date
+`YYYY-MM-DD` from `inputs.self.sourceInfo.lastModifiedDate` becomes
+`0.1.0-unstable-YYYY-MM-DD`, and `postPatch` rewrites the
+`;; Version:` header of all three libraries to match.  A plain path
+import has no git metadata, so the date falls back to the epoch.
 
 Byte-compile with warnings as errors (wired into the Nix build
 via `turnCompilationWarningToError = true`):
@@ -273,7 +293,7 @@ These keymaps are auto-discovered by magit-section via the naming convention
 ### Package name and the entry library
 
 The package name matches the library, the provided feature and the
-major mode: `pname = "cid-mode"` in `nix/default.nix`, `cid-mode.el`
+major mode: `pname = "cid-mode"` in `flake.nix`, `cid-mode.el`
 in the source.  `use-package SYMBOL` expands to `(require SYMBOL)`
 and `:ensure t` looks up the package named by SYMBOL, so the three
 names must agree.  Users configure the package through
@@ -584,8 +604,8 @@ instead of inheriting the user's current directory.
 
 `nix/emacs-screenshot.nix` provides a reproducible way to render CID decode
 output as a PNG image, following the same pattern as `~/nixos.el` and
-`~/crate.el`.  It builds `cid-mode` via `nix/default.nix` (passed in by
-the flake), launches an
+`~/crate.el`.  It receives the `cid-mode` derivation built in `flake.nix`
+(passed in by the flake), launches an
 Emacs frame under `xvfb-run` with the modus-operandi theme and Iosevka
 font, decodes the Big Buck Bunny CID, makes the buffer the sole window,
 sizes the frame to fit, and captures the frame with `x-export-frames`.
