@@ -89,7 +89,9 @@ or from ipfs.io.  `cid-open-gateway' opens a CID at this gateway."
   "Hook run after a CID buffer is fully rendered.
 The buffer is current and `cid--info' is set when this hook runs.
 Use this to modify the buffer after `cid-decode' finishes.  Unlike
-`cid-mode-hook', `cid--info' is available here."
+`cid-mode-hook', `cid--info' is available here.  A decode that
+finds the same data already rendered skips the render and this
+hook does not run again."
   :type 'hook
   :group 'cid)
 
@@ -593,8 +595,23 @@ expected %d, got %d"
 To decode a CID, type \\[cid-decode].
 
 \\{cid-mode-map}"
+  :interactive nil
   (setq-local revert-buffer-function #'cid-revert)
-  (setq-local bookmark-make-record-function #'cid--bookmark-make-record))
+  (setq-local bookmark-make-record-function #'cid--bookmark-make-record)
+  (setq-local imenu-create-index-function #'cid--imenu-index)
+  (setq-local list-buffers-directory nil)
+  ;; A render inserts the whole tree once and then only reads it, and
+  ;; no section opens a lazy body, so plain integers stay valid and a
+  ;; large tree avoids the superlinear marker cost.
+  (setq-local magit-section-inhibit-markers t)
+  ;; Headings carry their text verbatim and show no child counts, so
+  ;; the count rewrite never fires and never moves recorded positions.
+  (setq-local magit-section-show-child-count nil)
+  ;; Keep the parent value of `truncate-lines'.  A CID and a hex
+  ;; digest have no break points, so a wrapped value reads as two
+  ;; values.  Spell the value out, so a change in the parent mode
+  ;; cannot silently start wrapping.
+  (setq-local truncate-lines t))
 
 ;;; Sections hook
 
@@ -624,7 +641,7 @@ running (via `magit-run-section-hook')."
   (declare (indent 1))
   `(magit-insert-section (cid-section ,title)
      (magit-insert-heading
-       (propertize (concat ,title "\n") 'font-lock-face 'cid-section-face))
+       (propertize (concat ,title "\n") 'face 'cid-section-face))
      ,@body
      (insert "\n")))
 
@@ -731,23 +748,88 @@ Works on `cid-field' sections (field lines like Algorithm, Digest Size, etc.)."
 
 
 
+(defvar-local cid--rendered nil
+  "Data of the last render of the current buffer.
+`cid--display' compares it with the data of the next display call
+and skips the render when the two match.")
+
+(defmacro cid--unless-rendered (key &rest body)
+  "Unless KEY equals the data of the last render, evaluate BODY.
+KEY holds the decoded data and the section hook, so a changed CID
+or a changed hook renders and an identical one keeps the buffer,
+its point and its folds."
+  (declare (indent 1))
+  `(unless (equal ,key cid--rendered)
+     ,@body
+     (setq-local cid--rendered ,key)))
+
+(defun cid--render ()
+  "Render the current buffer as a tree of CID sections.
+The tree comes from `cid-sections-hook'.  Point and the folds
+survive the render through the section idents."
+  (let ((record (cid--point-record)))
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (magit-insert-section (cid-root 'cid)
+        (magit-run-section-hook 'cid-sections-hook))
+      (set-buffer-modified-p nil))
+    ;; Show the root to apply the folds cached in
+    ;; `magit-section-visibility-cache'.  Do it with caching off, so
+    ;; the cache keeps only the sections that a reader folded.
+    (let ((magit-section-cache-visibility nil))
+      (magit-section-show magit-root-section))
+    (cid--restore-record record)))
+
+(defun cid--point-record (&optional position)
+  "Return a record of the line at POSITION, or nil.
+The record holds the section, the line offset from the section
+start and the column, which `cid--restore-record' replays after a
+render."
+  (let ((position (or position (point))))
+    (when-let* ((section (magit-section-at position)))
+      (list :section section
+            :line (- (line-number-at-pos position)
+                     (line-number-at-pos (oref section start)))
+            :column (- position
+                       (save-excursion
+                         (goto-char position)
+                         (line-beginning-position)))))))
+
+(defun cid--restore-record (record)
+  "Move point to the line that RECORD names.
+Land at `point-min' when the recorded section is gone from the
+current tree."
+  (goto-char (or (when-let* ((section (plist-get record :section)))
+                   (save-excursion
+                     (when (magit-section-goto-successor
+                            section
+                            (plist-get record :line)
+                            (plist-get record :column))
+                       (point))))
+                 (point-min))))
+
+(defun cid--imenu-index ()
+  "Return an imenu index of the sections of the current CID buffer.
+The index holds the section headings and the field labels, in
+buffer order."
+  (let (index)
+    (magit-map-sections
+     (lambda (section)
+       (when (memq (oref section type) '(cid-section cid-field))
+         (push (cons (oref section value) (oref section start)) index))))
+    (sort index (lambda (a b) (< (cdr a) (cdr b))))))
+
 (defun cid--display (info)
   "Display decoded CID INFO in a `cid-mode' buffer."
   (let ((buf (get-buffer-create
-              (format "CID: %s" (cid-info-cid-string info))))
-        (inhibit-read-only t))
+              (format "CID: %s" (cid-info-cid-string info)))))
     (with-current-buffer buf
-      (erase-buffer)
-      (cid-mode)
-      (setq-local default-directory temporary-file-directory)
-      (setq cid--info info)
-
-      (magit-insert-section (cid-root)
-        (magit-run-section-hook 'cid-sections-hook))
-
-      (goto-char (point-min))
-      (set-buffer-modified-p nil)
-      (run-hooks 'cid-decode-hook))
+      (cid--unless-rendered (list info cid-sections-hook)
+        (cid-mode)
+        (setq-local default-directory temporary-file-directory)
+        (setq cid--info info)
+        (cid--render)
+        (run-hooks 'cid-decode-hook)))
     (pop-to-buffer buf)))
 
 (defun cid--insert-header (cid-string version)

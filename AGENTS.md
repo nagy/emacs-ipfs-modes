@@ -13,10 +13,10 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 |File           |Purpose                                              |
 |---------------|-----------------------------------------------------|
-|`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
+|`cid-mode.el`  |CID decoder major mode (~1004 lines)                 |
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
 |`embark-cid.el`|Embark target finder and actions for CIDs (~89 lines)|
-|`test/cid-mode-test.el`|ERT test suite (66 tests)                   |
+|`test/cid-mode-test.el`|ERT test suite (79 tests)                   |
 |`test/cid-mode-test-helper.el`|Shared fixtures for the test suite     |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
 |`flake.nix`    |Flake outputs; `melpaBuild` package, lint check, screenshot wiring |
@@ -38,7 +38,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 
 ## Architecture
 
-### `cid-mode.el` (~917 lines)
+### `cid-mode.el` (~1004 lines)
 
 The mode is organized into these sections:
 
@@ -64,6 +64,9 @@ The mode is organized into these sections:
    Sections (Identity, Multihash, Sizes, Raw Bytes, CIDv0 Equivalent) use
    `magit-insert-section` / `magit-insert-heading`; individual fields
    (CID, Version, Algorithm, etc.) are nested `cid-field` sections.
+   `cid--render` owns the erase, the root section, the hook run, the
+   fold restore and the point restore.  `cid--display` wraps it in
+   `cid--unless-rendered`, so identical data skips the render.
 10. **Commands** — `cid-decode`, `cid-decode-at-point`, `cid-decode-from-raw`,
     `cid-revert`, `cid-copy-cid`, `cid-copy-field-value`, `cid-open-gateway`
 11. **Bookmarks** — `cid-bookmark-jump`, `cid--bookmark-make-record`
@@ -227,7 +230,7 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 ## Testing
 
 ```bash
-# Run the full test suite (66 tests):
+# Run the full test suite (79 tests):
 emacs -Q --batch -L . -L test -l test/cid-mode-test.el \
   -f ert-run-tests-batch-and-exit
 
@@ -337,6 +340,29 @@ because `melpaBuild` stages only root `*.el` files.  It then loads every
 file matched by `test/*-test.el`, so a new test file needs no flake
 edit.  `failglob` plus the `||` guard stops a zero-test pass.
 
+Section tests read the tree, not the text.  `cid-mode-test.el` keeps
+four helpers for that:
+
+- `cid-test--with-buffer` — decodes a CID into a fresh buffer, runs the
+  body with that buffer current, and kills the buffer afterwards.  It
+  kills a leftover buffer first, so no fold, point record or stale tree
+  leaks from an earlier test.
+- `cid-test--section` — returns the section of a type and value, found
+  with `magit-map-sections`.
+- `cid-test--root-values` — returns the value of every child of the
+  root section, in hook order.  A structure test compares that one list
+  and covers both the hook list and the inserter output.
+- `cid-test--render-alpha` — renders a small synthetic tree, optionally
+  with padding above the group or extra lines inside it, for the point
+  record and offset tests.
+
+Assertions go through `(oref section type)`, `(oref section value)`,
+`(oref section hidden)` and `(eq section old-section)`.  A fold test
+reaches a section through its visible heading, because `search-forward`
+skips invisible text.  Tests that insert by hand wrap the insertion in
+`(let ((inhibit-read-only t)) ...)`, because the mode body makes the
+buffer read-only.
+
 ### Package name and the entry library
 
 The package name matches the library, the provided feature and the
@@ -418,10 +444,19 @@ Required built-in packages come first, alphabetically, followed by
 navigation (`magit-section-forward`/`magit-section-backward`), and
 standard buffer conventions for free.
 
+`magit-section-mode-map` carries `:full t :suppress t`, so it answers
+through the parent of `cid-mode-map`: `TAB`, `S-TAB`, `M-TAB`, `^`,
+`n`/`p`, `M-n`/`M-p`, `1` to `4` and `M-1` to `M-4`.  Check a new
+binding against that list before adding it: a mode that binds `n` or a
+digit loses the Magit meaning of that key.
+
 ### `cid-info` struct
 
-All parsed data lives in a `cl-defstruct` value.  The mode only stores
-one buffer-local variable (`cid--info`), making `revert-buffer` trivial.
+All parsed data lives in a `cl-defstruct` value.  The mode stores two
+buffer-local variables, `cid--info` and `cid--rendered`, so
+`revert-buffer` stays simple.  `cid--info` holds the decoded struct.
+`cid--rendered` holds the key of the last render and drives the render
+skip.
 
 ### Pure decoder functions
 
@@ -621,8 +656,7 @@ with `add-hook` / `remove-hook`.  Each inserter is wrapped by
 buffer.  Users can also disable individual inserters without removing
 them from the hook using `magit-disabled-section-inserters`.
 
-The three non-conditional inserters always run:
-
+The unconditional inserters always run:
 - `cid-insert-header-section` — CID string + version line + summary
 - `cid-insert-identity-section` — CID, Version, Multibase, Codec
 - `cid-insert-multihash-section` — Algorithm, Digest Size, digests (hex, base32, base58btc)
@@ -643,6 +677,110 @@ Faces are defined as `defface` rather than inline `:inherit` props:
 - `cid-field-face` — inherits `font-lock-type-face`; used for field
   labels (CID, Version, Multibase, etc.)
 
+A heading carries a plain `face` property, not `font-lock-face`.
+`magit-insert-heading` keeps a string that already carries a face, and
+a `face` property shows without the `char-property-alias-alist` alias
+that font-lock installs, so the heading look never depends on
+font-lock being active.
+
+### Section tree and render settings
+
+One section per data group, one section per field line:
+
+|Type         |Value                          |Where                     |
+|-------------|-------------------------------|--------------------------|
+|`cid-root`   |`cid`                          |the whole buffer          |
+|`cid-section`|heading text (`"Identity"`)    |one group per heading     |
+|`cid-field`  |trimmed label (`"Digest (hex)"`)|one field line            |
+
+Keep counts and sizes in the heading text, never in the value, so a
+changing count cannot kill the ident that carries the fold and the
+point record.  The root value names the buffer kind, so a second mode
+in a later commit must not reuse `cid`.
+
+The mode body sets four buffer locals that the renderer depends on:
+
+```elisp
+(setq-local imenu-create-index-function #'cid--imenu-index)
+(setq-local list-buffers-directory nil)
+(setq-local magit-section-inhibit-markers t)
+(setq-local magit-section-show-child-count nil)
+```
+
+- `magit-section-inhibit-markers` — a render inserts the tree once and
+  then only reads it, and no section opens a lazy body, so `start`,
+  `content` and `end` stay plain integers and the render avoids the
+  superlinear marker cost.  Never add `magit-insert-section-body` (a
+  lazy body) while this is t: it signals `markerp`.  Never edit the
+  buffer after a render: the integers go stale.
+- `magit-section-show-child-count` — the count rewrite happens after
+  the children record their positions, so it would leave them short.
+- `list-buffers-directory` — the mode points `default-directory` at
+  `temporary-file-directory`, which is wrong for the buffer menu.
+- `truncate-lines` — spelled out as t above the parent value: a CID
+  and a hex digest have no break points, so a wrapped value reads as
+  two values.
+
+### Renderer, folds and point
+
+`cid--render` is the only renderer.  It records point, erases, opens
+the root section, runs `cid-sections-hook`, shows the root with the
+visibility cache off, and restores point:
+
+```elisp
+(let ((magit-section-cache-visibility nil))
+  (magit-section-show magit-root-section))
+(cid--restore-record record)
+```
+
+Caching stays off for that show, so a render does not add one cache
+entry per section.  Folds still come back: `magit-section-hide`
+writes the ident and the state into `magit-section-visibility-cache`,
+and the next render reads it back through
+`magit-section-set-visibility-hook`.
+
+`cid--point-record` stores the section, the line offset from the
+section start and the column.  `cid--restore-record` replays it with
+`magit-section-goto-successor`, which finds the section by ident and
+verifies the landing spot.  A dropped section sends point to
+`point-min`.  Always measure the offset with `line-number-at-pos`
+differences: `count-lines` answers 1 for a region inside one line.
+
+The offset counts from the section start, so a line added above a
+section moves the section and keeps the reader, while a line added
+inside a body moves the reader to the line that now sits on that
+offset.  That is the pressure toward one section per field line.
+
+### Render skip
+
+`cid--display` wraps the render in `cid--unless-rendered`, keyed on
+`(list info cid-sections-hook)`:
+
+```elisp
+(defmacro cid--unless-rendered (key &rest body)
+  (declare (indent 1))
+  `(unless (equal ,key cid--rendered)
+     ,@body
+     (setq-local cid--rendered ,key)))
+```
+
+`equal` compares `cid-info` structs slot by slot, so a repeated decode
+of the same CID keeps the section objects, the point and the folds.
+The hook belongs in the key, so a user who edits
+`cid-sections-hook` sees the change on the next `g`.  The mode call
+sits inside the macro: `cid-mode` wipes buffer locals, and the macro
+sets `cid--rendered` after the body.  Tests assert the skip through
+section object identity (`eq`), not through timing.
+
+### Imenu
+
+`cid--imenu-index` walks the section tree with `magit-map-sections`,
+keeps `cid-section` and `cid-field` entries, and sorts them by start
+position, because `magit-map-sections` yields depth first and ends
+with the root.  It reads `(oref section value)` for the label and
+`(oref section start)` for the position.  No property walk, no
+separate section list.
+
 ### `cid-decode-hook`
 
 `cid-decode-hook` runs after a CID buffer is fully rendered, with
@@ -654,6 +792,10 @@ modify the buffer based on the parsed CID data:
 (add-hook 'cid-decode-hook
   (lambda () (message "Decoded: %s" (cid-info-cid-string cid--info))))
 ```
+
+The hook sits inside `cid--unless-rendered`, so a decode that skips
+the render leaves the hook unrun.  Put decoration that must survive a
+revisit in `cid-mode-hook` or in the buffer setup, not here.
 
 ### Buffer directory
 

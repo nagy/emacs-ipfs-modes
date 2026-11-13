@@ -67,6 +67,71 @@
             result))
     (vconcat (nreverse result))))
 
+(defmacro cid-test--with-buffer (cid &rest body)
+  "Decode CID into a fresh buffer and run BODY with that buffer current.
+The buffer is killed when BODY finishes, so each test starts from a
+render with no folds, no point record and no stale section tree."
+  (declare (indent 1))
+  `(let ((name (format "CID: %s" ,cid)))
+     (when (get-buffer name)
+       (kill-buffer name))
+     (cl-letf (((symbol-function 'pop-to-buffer)
+                (lambda (buffer) (set-buffer buffer))))
+       (cid-decode ,cid))
+     (unwind-protect
+         (with-current-buffer name
+           ,@body)
+       (when (get-buffer name)
+         (kill-buffer name)))))
+
+(defun cid-test--section (type &optional value)
+  "Return the section of TYPE with VALUE in the current buffer.
+A nil VALUE matches the first section of TYPE."
+  (let (found)
+    (magit-map-sections
+     (lambda (section)
+       (when (and (eq (oref section type) type)
+                  (or (null value) (equal (oref section value) value)))
+         (setq found section))))
+    found))
+
+(defun cid-test--root-values ()
+  "Return the value of every child of the root section, in order."
+  (mapcar (lambda (section) (oref section value))
+          (oref magit-root-section children)))
+
+(defun cid-test--child-values (type value)
+  "Return the values of the children of the section of TYPE and VALUE."
+  (mapcar (lambda (section) (oref section value))
+          (oref (cid-test--section type value) children)))
+
+(defun cid-test--line ()
+  "Return the buffer line at point, without text properties."
+  (buffer-substring-no-properties (line-beginning-position)
+                                  (line-end-position)))
+
+(defun cid-test--render-alpha (&optional prefix extra)
+  "Render a test tree that holds one Alpha group.
+PREFIX adds that many lines above the group and EXTRA that many
+lines at the top of the group body."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (magit-insert-section (cid-root 'cid)
+      (dotimes (_ (or prefix 0))
+        (insert "padding\n"))
+      (magit-insert-section (cid-section "Alpha")
+        (magit-insert-heading (propertize "Alpha\n" 'face 'cid-section-face))
+        (dotimes (i (or extra 0))
+          (insert (format "extra%d\n" i)))
+        (insert "one\ntwo\nthree\n")))
+    (set-buffer-modified-p nil)))
+
+(defun cid-test--decode-in-place (cid)
+  "Decode CID into the current buffer, without selecting a window."
+  (cl-letf (((symbol-function 'pop-to-buffer)
+             (lambda (buffer) (set-buffer buffer))))
+    (cid-decode cid)))
+
 
 ;;; Base58 decoding
 
@@ -638,7 +703,158 @@ multibase/multicodec/multihash tables."
     (should (eq major-mode 'cid-mode))
     (should buffer-read-only)
     (should (eq revert-buffer-function #'cid-revert))
-    (should (eq bookmark-make-record-function #'cid--bookmark-make-record))))
+    (should (eq bookmark-make-record-function #'cid--bookmark-make-record))
+    (should (eq imenu-create-index-function #'cid--imenu-index))
+    (should-not list-buffers-directory)
+    ;; Marker-free positions and no child-count rewrite: the render
+    ;; inserts once, and both options protect the recorded integers.
+    (should magit-section-inhibit-markers)
+    (should-not magit-section-show-child-count)))
+
+
+;;; Section tree
+
+(ert-deftest cid-sections-structure ()
+  "The default hook renders one section per data group, in order."
+  (cid-test--with-buffer cid-test--v0-str
+    (should (equal (cid-test--root-values)
+                   '("Identity" "Multihash" "Sizes" "Raw Bytes"
+                     "CIDv1 Equivalent")))
+    (should (equal (cid-test--child-values 'cid-section "Identity")
+                   '("CID" "Version" "Multibase" "Codec")))
+    (should (equal (cid-test--child-values 'cid-section "Multihash")
+                   '("Algorithm" "Digest Size" "Digest (hex)"
+                     "Digest (base32)" "Digest (base58btc)")))))
+
+(ert-deftest cid-sections-structure-v1 ()
+  "A CIDv1 buffer shows the CIDv0 equivalent section instead."
+  (cid-test--with-buffer cid-test--v1-str
+    (should (equal (cid-test--root-values)
+                   '("Identity" "Multihash" "Sizes" "Raw Bytes"
+                     "CIDv0 Equivalent")))
+    (should (equal (cid-test--child-values 'cid-section "Identity")
+                   '("CID" "Version" "Multibase" "Codec")))))
+
+(ert-deftest cid-sections-root-ident ()
+  "The root section value names the buffer kind.
+Two buffer kinds that shared a root value would share fold state
+through the ident-keyed visibility cache."
+  (cid-test--with-buffer cid-test--v0-str
+    (should (equal (magit-section-ident magit-root-section)
+                   '((cid-root . cid))))))
+
+(ert-deftest cid-sections-markers-inhibited ()
+  "Section positions are integers, not markers."
+  (cid-test--with-buffer cid-test--v0-str
+    (should (integerp (oref magit-root-section start)))
+    (should (integerp (oref magit-root-section end)))
+    (should (integerp (oref (cid-test--section 'cid-field "CID") start)))))
+
+(ert-deftest cid-sections-field-keymap ()
+  "A field section carries the field keymap and copies its value."
+  (cid-test--with-buffer cid-test--v0-str
+    (let ((section (cid-test--section 'cid-field "Digest (hex)")))
+      (should (eq (oref section keymap) 'magit-cid-field-section-map))
+      (goto-char (oref section start))
+      (cid-copy-field-value)
+      (should (equal (current-kill 0) cid-test--v0-digest-hex)))))
+
+(ert-deftest cid-sections-copy-strips-properties ()
+  "Magit filters text properties, so the field copy reads a position.
+`cid-copy-field-value' slices the buffer at the section start plus
+the label width, which gives plain text."
+  (cid-test--with-buffer cid-test--v0-str
+    (goto-char (oref (cid-test--section 'cid-field "Version") start))
+    (cid-copy-field-value)
+    (should (equal (current-kill 0) "CIDv0"))))
+
+(ert-deftest cid-fold-survives-render ()
+  "A fold comes back after a render, through the section ident."
+  (cid-test--with-buffer cid-test--v0-str
+    (let* ((section (cid-test--section 'cid-section "Multihash"))
+           (body (1+ (oref section content))))
+      (magit-section-hide section)
+      (should (oref section hidden))
+      (should (invisible-p body))
+      (cid--render)
+      (let ((new (cid-test--section 'cid-section "Multihash")))
+        (should (oref new hidden))
+        (should (invisible-p (1+ (oref new content))))))))
+
+(ert-deftest cid-point-kept-with-padding-above ()
+  "Padding above the section keeps the reader on the same line."
+  (with-temp-buffer
+    (cid-mode)
+    (cid-test--render-alpha)
+    (goto-char (point-min))
+    (search-forward "three")
+    (beginning-of-line)
+    (let ((record (cid--point-record)))
+      (cid-test--render-alpha 2 nil)
+      (cid--restore-record record)
+      (should (equal (cid-test--line) "three")))))
+
+(ert-deftest cid-point-follows-offset-inside-section ()
+  "A line added inside the section keeps the offset, not the identity.
+This is the documented cost of a body line without a section of its
+own."
+  (with-temp-buffer
+    (cid-mode)
+    (cid-test--render-alpha)
+    (goto-char (point-min))
+    (search-forward "three")
+    (beginning-of-line)
+    (let ((record (cid--point-record)))
+      (cid-test--render-alpha 0 1)
+      (cid--restore-record record)
+      (should (equal (cid-test--line) "two")))))
+
+(ert-deftest cid-point-min-when-section-dropped ()
+  "A dropped section sends point to `point-min'."
+  (with-temp-buffer
+    (cid-mode)
+    (cid-test--render-alpha)
+    (goto-char (point-min))
+    (search-forward "two")
+    (let ((record (cid--point-record))
+          (inhibit-read-only t))
+      (erase-buffer)
+      (magit-insert-section (cid-root 'cid)
+        (magit-insert-section (cid-section "Beta")
+          (magit-insert-heading "Beta\n")
+          (insert "other\n")))
+      (cid--restore-record record)
+      (should (= (point) (point-min))))))
+
+(ert-deftest cid-render-skipped-when-data-unchanged ()
+  "An identical decode keeps the section objects."
+  (cid-test--with-buffer cid-test--v1-str
+    (let ((section (cid-test--section 'cid-section "Identity")))
+      (cid-test--decode-in-place cid-test--v1-str)
+      (should (eq (cid-test--section 'cid-section "Identity") section)))))
+
+(ert-deftest cid-render-runs-when-hook-changed ()
+  "A changed section hook renders again, so a new hook takes effect."
+  (cid-test--with-buffer cid-test--v1-str
+    (should (member "Sizes" (cid-test--root-values)))
+    (let ((cid-sections-hook '(cid-insert-header-section
+                               cid-insert-identity-section)))
+      (cid-test--decode-in-place cid-test--v1-str))
+    (should (equal (cid-test--root-values) '("Identity")))))
+
+(ert-deftest cid-imenu-index ()
+  "The imenu index holds the headings and fields in buffer order."
+  (cid-test--with-buffer cid-test--v0-str
+    (let ((index (cid--imenu-index)))
+      (should (member "Identity" (mapcar #'car index)))
+      (should (member "Digest (hex)" (mapcar #'car index)))
+      (should-not (member "QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T"
+                          (mapcar #'car index)))
+      (should (= (cdr (assoc "Digest (hex)" index))
+                 (oref (cid-test--section 'cid-field "Digest (hex)") start)))
+      ;; Positions ascend, so the menu reads in buffer order.
+      (should (equal (mapcar #'cdr index)
+                     (sort (mapcar #'cdr index) #'<))))))
 
 
 ;;; Autoloads

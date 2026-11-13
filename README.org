@@ -61,7 +61,7 @@ inputs.emacs-ipfs-modes.packages.${system}.cid-mode.override {
 | =M-x cid-decode=               | Prompt for a CID string and display its components                          |
 | =M-x cid-decode-at-point=      | Decode the CID at point in any buffer                                       |
 | =M-x cid-decode-from-raw=      | Build a CIDv1 with the raw codec from a hex digest; non-interactively returns the string |
-| =M-x cid-revert=               | Render the buffer again                                                     |
+| =M-x cid-revert=               | Render the buffer again; identical data keeps the current render           |
 | =M-x cid-copy-cid=             | Copy the CID string to the kill ring                                        |
 | =M-x cid-copy-field-value=     | Copy the value of the field at point                                        |
 | =M-x cid-open-gateway=         | Open the CID on =cid-gateway-url=                                             |
@@ -85,14 +85,22 @@ trailing punctuation still resolves.
 | =q=         | =quit-window=                  | bury the buffer                    |
 
 A field line copies its value on =RET=, not only the label.  The
-section headings feed Imenu, so =imenu= lists every section.
+section headings and the field labels feed Imenu, so =imenu= reaches
+every section of the buffer.
+
+A render keeps the reader in place.  Folds and point survive
+=cid-revert=, because the mode records the section, the line offset
+and the column, then finds the section again by identity.  A field
+that moves down the buffer keeps the reader on its own line.
 
 * Buffers and bookmarks
 
 The buffer name holds the CID: =CID: <cid>=.  Decoding the same CID
-again reuses the buffer.  =C-x r m= stores a bookmark, because the
-buffer installs a bookmark handler, and the bookmark displays as
-=CID: <cid>=.
+again reuses the buffer, its folds and its point.  A decode whose
+data and section hook match the last render skips the render, so a
+repeated =M-x cid-decode= costs nothing.  =C-x r m= stores a bookmark,
+because the buffer installs a bookmark handler, and the bookmark
+displays as =CID: <cid>=.
 
 * Customization
 
@@ -107,17 +115,17 @@ buffer installs a bookmark handler, and the bookmark displays as
   Remove an entry to hide a section, reorder it to move the section
 - =cid-decode-hook= -- runs after the buffer renders, with =cid--info=
   bound.  Use it for extra decoration; =cid-mode-hook= runs before the
-  data exists
+  data exists.  A render that is skipped leaves the hook unrun
 - =cid-header-face=, =cid-section-face=, =cid-field-face= -- the faces
   of the buffer
+
+The buffer truncates long lines.  A CID and a hex digest have no
+break points, so a wrapped value would read as two values.
 
 #+begin_src elisp
 (use-package cid-mode
   :custom
-  (cid-hex-bytes-per-line 32)
-  :config
-  (add-hook 'cid-decode-hook
-            (lambda () (setq-local truncate-lines t))))
+  (cid-hex-bytes-per-line 32))
 #+end_src
 
 * URL schemes
