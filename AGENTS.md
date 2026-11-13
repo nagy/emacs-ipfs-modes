@@ -19,7 +19,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`test/cid-mode-test.el`|ERT test suite (66 tests)                   |
 |`test/cid-mode-test-helper.el`|Shared fixtures for the test suite     |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
-|`flake.nix`    |Flake outputs; `melpaBuild` package plus screenshot wiring |
+|`flake.nix`    |Flake outputs; `melpaBuild` package, lint check, screenshot wiring |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
 |`nix/emacs-screenshot.nix`|Nix expression for screenshot generation  |
 
@@ -170,7 +170,8 @@ CID string
 ```bash
 # Nix (flake)
 nix build                       # build
-nix flake check                 # build + ERT suite
+nix flake check                 # build + ERT suite + lint
+nix build .#checks.x86_64-linux.lint  # package-lint + checkdoc only
 nix build .#screenshot          # regenerate README screenshot
 nix build .#gitrepo             # bare .git dir holding the screenshot
 
@@ -236,6 +237,24 @@ emacs -Q --batch -L . -l cid-mode.el \
   --eval '(cid-decode "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")' \
   --eval '(message "All decodes OK")'
 ```
+
+### Lint gate
+
+`checks.lint` runs `package-lint` and `checkdoc` over `*.el` and
+`test/*.el`, so the tests keep the same header and docstring rules as
+the code.  These settings are deliberate:
+
+- `package-lint--sane-prefixes` gains `magit-cid` and `embark-cid`,
+  because `magit-cid-*-section-map` follows the magit-section naming
+  convention and `embark-cid-*` belongs to the Embark module.
+- `package-lint--check-eval-after-load` is turned off.  The deferred
+  loads sit inside `;;;###autoload` cookies on purpose: the autoloads
+  file must register the Org link type and the Embark actions.
+- magit-section is not in the offline ELPA index, so the check adds a
+  `package-alist` stub.
+
+`checkdoc` exits 0 on findings, so the check fails on non-empty output
+instead.
 
 ### Test vectors
 
@@ -527,6 +546,18 @@ autoload cookie, so it requires the package:
 ```elisp
 (require 'cid-mode)
 ```
+
+### `rx` character class
+
+Spell the CID character class with `char`, not `any`:
+
+```elisp
+(rx-define cid-char (char "A-Za-z0-9"))
+```
+
+Both forms match the same characters.  `package-lint` reads a bare
+`any` as the Emacs 31 alias and demands a newer Emacs dependency, while
+`char` draws no finding.
 
 ### `cl-lib` prefix for Emacs functions
 

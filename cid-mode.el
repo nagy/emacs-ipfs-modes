@@ -172,7 +172,10 @@ Codes and names from the canonical go-multicodec table in the
 IPFS Kubo source.  Digest-size is the expected length in bytes,
 or 0 for variable.")
 
-(rx-define cid-char (any "A-Z" "a-z" "0-9"))
+;; `char' spells the same class as `any' but avoids a package-lint
+;; false positive: package-lint reads the bare symbol `any' as the
+;; Emacs 31 alias and demands a newer Emacs dependency.
+(rx-define cid-char (char "A-Za-z0-9"))
 
 (rx-define cid-v0
   (seq (repeat 46 cid-char)))

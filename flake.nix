@@ -162,6 +162,55 @@
             # it is the check.
             default = cidModeEl;
             inherit cidModeEl;
+
+            # Static lint gate.  Byte compilation cannot see a bad header,
+            # a stray symbol prefix or an undocumented argument, so run
+            # package-lint and checkdoc over the sources and the tests.
+            lint =
+              pkgs.runCommand "cid-mode-lint"
+                {
+                  nativeBuildInputs = [
+                    # magit-section is not in the offline ELPA index that the
+                    # sandbox sees, so package-lint needs a stub entry.  Give
+                    # Emacs a private HOME so its caches stay in the build.
+                    (pkgs.emacsPackages.emacsWithPackages (p: [ p.package-lint ]))
+                    pkgs.writableTmpDirAsHomeHook
+                  ];
+                  # `src' is the pre-postPatch tree, which is what should be
+                  # linted: postPatch only rewrites the `;; Version:' header.
+                  src = cidModeEl.src;
+                }
+                ''
+                  # Copy instead of relying on what melpaBuild staged, because
+                  # test/ is part of the lint surface.
+                  cp -r "$src"/. .
+
+                  # `package-lint-main-file' makes every file lint against the
+                  # main package headers.  Two prefix families come from other
+                  # packages by design: `magit-cid-*-section-map' (the
+                  # magit-section naming convention) and `embark-cid-*'.  The
+                  # deferred loads in the autoload cookies must stay, so the
+                  # eval-after-load warning is turned off.  The double
+                  # backslashes reach Emacs, which reads them as regex
+                  # alternation.
+                  emacs --batch --eval "(require 'package)" -l package-lint \
+                    --eval '(setq package-lint-main-file "cid-mode.el")' \
+                    --eval '(setq package-lint--sane-prefixes (concat package-lint--sane-prefixes "\\|magit-cid\\|embark-cid"))' \
+                    --eval '(advice-add (quote package-lint--check-eval-after-load) :override (lambda () nil))' \
+                    --eval '(advice-add (quote package-initialize) :after (lambda (&rest _) (push (cons (quote magit-section) (list (package-desc-create :name (quote magit-section) :version (quote (3 3 0)) :reqs nil :kind (quote single) :archive "stub" :summary "stub"))) package-alist)))' \
+                    -f package-lint-batch-and-exit \
+                    *.el test/*.el
+
+                  # checkdoc exits 0 even when it finds problems, so gate on
+                  # non-empty output instead of on the exit status.
+                  lint_log=$(emacs --batch -l checkdoc \
+                    --eval '(setq checkdoc-arguments-in-order-flag t)' \
+                    --eval '(mapc (lambda (f) (checkdoc-file f)) command-line-args-left)' \
+                    *.el test/*.el 2>&1)
+                  if [ -n "$lint_log" ]; then printf '%s\n' "$lint_log"; exit 1; fi
+
+                  touch $out
+                '';
           };
 
           # Dev shell: Emacs plus the tools the ERT suite shells out to.
