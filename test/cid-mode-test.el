@@ -1,4 +1,4 @@
-;;; cid-tests.el --- Tests for cid-mode -*- lexical-binding: t -*-
+;;; cid-mode-test.el --- Tests for cid-mode -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2026  Daniel Nagy
 
@@ -26,6 +26,7 @@
 ;;; Code:
 
 (require 'cid-mode)
+(require 'cid-mode-test-helper)
 (require 'ert)
 (require 'cl-lib)
 
@@ -619,7 +620,7 @@
 Both parsers depend only on their arguments and the constant
 multibase/multicodec/multihash tables."
   (with-temp-buffer
-    (insert-file-contents (expand-file-name "cid-mode.el"))
+    (insert (cid-mode-test--source-contents "cid-mode.el"))
     (dolist (entry '("cid--parse-v0" "cid--parse-v1"))
       (goto-char (point-min))
       (should (re-search-forward
@@ -647,7 +648,7 @@ multibase/multicodec/multihash tables."
 A fresh install must reach `cid-decode' and friends without an
 explicit require, and the URL handlers must register at startup."
   (with-temp-buffer
-    (insert-file-contents (expand-file-name "cid-mode.el"))
+    (insert (cid-mode-test--source-contents "cid-mode.el"))
     (let ((source (buffer-string)))
       (dolist (entry '("cid-decode" "cid-decode-at-point"
                        "cid-decode-from-raw" "cid-bookmark-jump"))
@@ -675,7 +676,7 @@ explicit require, and the URL handlers must register at startup."
 A fresh install must reach `embark-cid-copy' and friends without an
 explicit require, and loading Embark must load the module."
   (with-temp-buffer
-    (insert-file-contents (expand-file-name "embark-cid.el"))
+    (insert (cid-mode-test--source-contents "embark-cid.el"))
     (let ((source (buffer-string)))
       (dolist (entry '("embark-cid-target-at-point" "embark-cid-decode"
                        "embark-cid-copy" "embark-cid-open-gateway"))
@@ -694,5 +695,5 @@ explicit require, and loading Embark must load the module."
              nil t))))
 
 
-(provide 'cid-tests)
-;;; cid-tests.el ends here
+(provide 'cid-mode-test)
+;;; cid-mode-test.el ends here

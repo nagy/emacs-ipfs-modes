@@ -16,7 +16,8 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`cid-mode.el`  |CID decoder major mode (~917 lines)                  |
 |`ol-cid.el`    |Org link type `cid:` for CID references (~88 lines)  |
 |`embark-cid.el`|Embark target finder and actions for CIDs (~89 lines)|
-|`cid-tests.el` |ERT test suite (~700 lines, 66 tests)                |
+|`test/cid-mode-test.el`|ERT test suite (66 tests)                   |
+|`test/cid-mode-test-helper.el`|Shared fixtures for the test suite     |
 |`README.org`   |Install, `use-package` recipe, commands, keys, options |
 |`flake.nix`    |Flake outputs; `melpaBuild` package plus screenshot wiring |
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
@@ -103,7 +104,7 @@ and the first `embark-act' on a CID loads `embark-cid.el' on demand:
   (add-to-list 'embark-keymap-alist '(ipfs-cid . embark-cid-map)))
 ```
 
-`cid-tests.el` checks these cookies in `embark-cid-autoloads`.  Users
+`test/cid-mode-test.el` checks these cookies in `embark-cid-autoloads`.  Users
 can also load the module by hand:
 
 ```elisp
@@ -226,7 +227,8 @@ emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
 
 ```bash
 # Run the full test suite (66 tests):
-emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . -L test -l test/cid-mode-test.el \
+  -f ert-run-tests-batch-and-exit
 
 # Smoke test decode commands:
 emacs -Q --batch -L . -l cid-mode.el \
@@ -290,6 +292,32 @@ These keymaps are auto-discovered by magit-section via the naming convention
 
 ## Conventions
 
+### Test layout
+
+Tests live in `test/` (singular), one file per source unit, named
+`<unit>-test.el`.  Shared fixtures go in `cid-mode-test-helper.el`.
+That name ends in `-helper.el`, not `-test.el`, so the glob
+`test/*-test.el` keeps loading only real tests.
+
+```
+test/
+  cid-mode-test.el         # tests for cid-mode.el
+  cid-mode-test-helper.el  # shared fixtures
+```
+
+The helpers resolve the package root from their own path, so the suite
+runs from any working directory:
+
+```elisp
+(defconst cid-mode-test--source-directory
+  (expand-file-name ".." cid-mode-test--test-directory))
+```
+
+The `checkPhase` copies `${./test}` back into the build directory,
+because `melpaBuild` stages only root `*.el` files.  It then loads every
+file matched by `test/*-test.el`, so a new test file needs no flake
+edit.  `failglob` plus the `||` guard stops a zero-test pass.
+
 ### Package name and the entry library
 
 The package name matches the library, the provided feature and the
@@ -308,8 +336,8 @@ repository, rename the package then and declare the old name with
 `:old-names` in the MELPA recipe.
 
 Every user-facing command keeps its `;;;###autoload` cookie, and
-`cid-tests.el` checks them in `cid-autoloads`.  Add a new command
-there when adding it to `cid-mode.el`.  The autoload file also
+`test/cid-mode-test.el` checks them in `cid-autoloads`.  Add a new
+command there when adding it to `cid-mode.el`.  The autoload file also
 registers the `ipfs://`/`ipns://` handlers and defers the `ol-cid`
 require, so an installed package needs no explicit require.
 

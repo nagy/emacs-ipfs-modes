@@ -94,9 +94,24 @@
               # ERT suite here so `nix flake check' runs it too.  The
               # wrapped Emacs already carries magit-section and its
               # transitive dependencies on the load path.
+              #
+              # melpaBuild stages only the files matched by `files' (root
+              # `*.el'), so bring the test tree back before loading it.
+              # The tests outnumber the files, so load them with a glob:
+              # a new test file then needs no edit here.  printf repeats
+              # "-l %s" once per match, which turns the glob into `-l
+              # <file>' pairs.  failglob makes an empty glob a shell
+              # error, so the || guard fires instead of passing with
+              # zero tests.  The unquoted $test_args must split into
+              # words, which stays safe because test names hold no
+              # spaces.  `-L test' lets each file require the helper.
               checkPhase = ''
                 runHook preCheck
-                emacs --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
+                cp -r ${./test} ./test
+                shopt -s failglob
+                test_args=$(printf -- "-l %s " test/*-test.el) || { echo 'no tests matched test/*-test.el' >&2; exit 1; }
+                shopt -u failglob
+                emacs --batch -L . -L test $test_args -f ert-run-tests-batch-and-exit
                 runHook postCheck
               '';
 

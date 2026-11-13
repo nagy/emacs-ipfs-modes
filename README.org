@@ -176,7 +176,8 @@ require.  A manual load stays possible:
 * Testing
 
 #+begin_src sh
-emacs -Q --batch -L . -l cid-tests.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . -L test -l test/cid-mode-test.el \
+  -f ert-run-tests-batch-and-exit
 #+end_src
 
 The Nix build runs the same suite in its check phase, with the
