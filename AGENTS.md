@@ -22,11 +22,10 @@ and key-bind the package from `README.org`.
 
 ## Build and test
 
-- `nix flake check` — the gate: build, ERT suite and lint.
+- `nix flake check` — the gate.
 - ERT alone, for a fast loop:
   `emacs -Q --batch -L . -L test -l test/cid-mode-test.el -f ert-run-tests-batch-and-exit`
-- `nix build .#checks.x86_64-linux.lint` — package-lint and checkdoc
-  only.
+- `nix build .#checks.x86_64-linux.lint` — the lint check alone.
 - `nix build .#screenshot --out-link /tmp/screenshot` — regenerate the
   README image.
 - `nix fmt` — formats the Nix files.  Lisp has no formatter here.
