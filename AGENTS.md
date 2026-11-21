@@ -1,6 +1,6 @@
 # AGENTS.md — emacs-ipfs-modes
 
-## Overview
+## Purpose
 
 Emacs package for working with IPFS data from within Emacs.  The
 initial offering is `cid-mode`, a major mode for decoding and
@@ -9,7 +9,7 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 (`ol-cid.el`), Embark actions (`embark-cid.el`), and `ipfs://`/
 `ipns://` URL scheme handlers.
 
-## Files
+## Layout
 
 |File           |Purpose                                              |
 |---------------|-----------------------------------------------------|
@@ -23,18 +23,85 @@ at <https://cid.ipfs.tech/>.  Also includes Org link support
 |`flake.lock`   |Pinned nixpkgs/flake-parts/nur-packages inputs       |
 |`nix/emacs-screenshot.nix`|Nix expression for screenshot generation  |
 
-## Dependencies
+## Build and test
 
-|Dependency   |Required?|Why                                                |
-|-------------|---------|---------------------------------------------------|
-|Emacs 30.1   |yes      |`cl-defstruct`, `string-replace`, `defvar-keymap`  |
-|magit-section|yes      |collapsible sections via `magit-insert-section`    |
-|browse-url   |built-in |`cid-open-gateway` opens the CID on an IPFS gateway|
-|bookmark     |built-in |`cid-bookmark-jump`, `cid--bookmark-make-record`   |
-|rx           |built-in |`rx-define` for CID pattern matching               |
-|thingatpt    |built-in |`thing-at-point` integration for `cid` type        |
-|ol (org)     |soft     |Org link support via `ol-cid.el` (opt-in load)     |
-|embark       |soft     |Embark actions via `embark-cid.el` (opt-in load)   |
+```bash
+# Nix (flake)
+nix build                       # build
+nix flake check                 # build + ERT suite + lint
+nix build .#checks.x86_64-linux.lint  # package-lint + checkdoc only
+nix build .#screenshot          # regenerate README screenshot
+nix build .#gitrepo             # bare .git dir holding the screenshot
+
+# Without Nix
+emacs -Q --batch -f batch-byte-compile cid-mode.el
+emacs -Q --batch -L . -f batch-byte-compile ol-cid.el
+emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
+```
+
+Dev shell: `nix develop` (Emacs).
+
+Flake outputs: `packages.cid-mode` (= `default`) is the `melpaBuild`
+derivation defined inline in `flake.nix`;
+its `checkPhase` runs the ERT suite.  `melpaBuild` puts its
+`packageRequires` in `propagatedBuildInputs`, and the Emacs setup hook
+adds only `share/emacs/site-lisp`, not the `elpa/<pkg>-<version>`
+subdirectories.  So magit-section never reaches `load-path` by itself.
+The build defaults `emacsPackages` to a wrapped Emacs,
+`pkgs.emacsPackagesFor (emacs.pkgs.withPackages (_: [ magit-section ]))`,
+which carries the dependency and its closure on the load path.  The
+derivation wraps in `lib.makeOverridable`, so a consumer can swap the
+Emacs or the package set:
+
+```nix
+inputs.emacs-ipfs-modes.packages.${system}.cid-mode.override {
+  emacs = pkgs.emacs-nox;
+}
+```
+
+`packages.screenshot` and
+`packages.gitrepo` come from `nix/emacs-screenshot.nix`, which uses
+`mkGitRepository` imported from the `nur-packages` flake input (not
+vendored).
+
+The version string comes from the flake source info.  The commit date
+`YYYY-MM-DD` from `inputs.self.sourceInfo.lastModifiedDate` becomes
+`0.1.0-unstable-YYYY-MM-DD`, and `postPatch` rewrites the
+`;; Version:` header of all three libraries to match.  A plain path
+import has no git metadata, so the date falls back to the epoch.
+
+Byte-compile with warnings as errors (wired into the Nix build
+via `turnCompilationWarningToError = true`):
+
+```bash
+emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
+  -f batch-byte-compile cid-mode.el
+emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
+  -L . -f batch-byte-compile ol-cid.el
+emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
+  -L . -f batch-byte-compile embark-cid.el
+```
+
+### Screenshot via Nix
+
+### Screenshot via Nix
+
+`nix/emacs-screenshot.nix` provides a reproducible way to render CID decode
+output as a PNG image, following the same pattern as `~/nixos.el` and
+`~/crate.el`.  It receives the `cid-mode` derivation built in `flake.nix`
+(passed in by the flake), launches an
+Emacs frame under `xvfb-run` with the modus-operandi theme and Iosevka
+font, decodes the Big Buck Bunny CID, makes the buffer the sole window,
+sizes the frame to fit, and captures the frame with `x-export-frames`.
+
+```
+nix build .#screenshot --out-link /tmp/screenshot
+```
+
+Available outputs:
+- `png` — light-theme PNG with imagemagick border + shadow + pngquant
+- `svg` — dual-theme (light/dark) SVG via `svgDualTheme`
+- `gitrepo` — SVG wrapped for git hosting
 
 ## Architecture
 
@@ -168,105 +235,7 @@ CID string
 - Codec varint identifies the content type (dag-pb, dag-cbor, raw, etc.).
 - The rest is the multihash (algorithm varint + digest-size varint + digest).
 
-## Building
-
-```bash
-# Nix (flake)
-nix build                       # build
-nix flake check                 # build + ERT suite + lint
-nix build .#checks.x86_64-linux.lint  # package-lint + checkdoc only
-nix build .#screenshot          # regenerate README screenshot
-nix build .#gitrepo             # bare .git dir holding the screenshot
-
-# Without Nix
-emacs -Q --batch -f batch-byte-compile cid-mode.el
-emacs -Q --batch -L . -f batch-byte-compile ol-cid.el
-emacs -Q --batch -L . -f batch-byte-compile embark-cid.el
-```
-
-Dev shell: `nix develop` (Emacs).
-
-Flake outputs: `packages.cid-mode` (= `default`) is the `melpaBuild`
-derivation defined inline in `flake.nix`;
-its `checkPhase` runs the ERT suite.  `melpaBuild` puts its
-`packageRequires` in `propagatedBuildInputs`, and the Emacs setup hook
-adds only `share/emacs/site-lisp`, not the `elpa/<pkg>-<version>`
-subdirectories.  So magit-section never reaches `load-path` by itself.
-The build defaults `emacsPackages` to a wrapped Emacs,
-`pkgs.emacsPackagesFor (emacs.pkgs.withPackages (_: [ magit-section ]))`,
-which carries the dependency and its closure on the load path.  The
-derivation wraps in `lib.makeOverridable`, so a consumer can swap the
-Emacs or the package set:
-
-```nix
-inputs.emacs-ipfs-modes.packages.${system}.cid-mode.override {
-  emacs = pkgs.emacs-nox;
-}
-```
-
-`packages.screenshot` and
-`packages.gitrepo` come from `nix/emacs-screenshot.nix`, which uses
-`mkGitRepository` imported from the `nur-packages` flake input (not
-vendored).
-
-The version string comes from the flake source info.  The commit date
-`YYYY-MM-DD` from `inputs.self.sourceInfo.lastModifiedDate` becomes
-`0.1.0-unstable-YYYY-MM-DD`, and `postPatch` rewrites the
-`;; Version:` header of all three libraries to match.  A plain path
-import has no git metadata, so the date falls back to the epoch.
-
-Byte-compile with warnings as errors (wired into the Nix build
-via `turnCompilationWarningToError = true`):
-
-```bash
-emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
-  -f batch-byte-compile cid-mode.el
-emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
-  -L . -f batch-byte-compile ol-cid.el
-emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" \
-  -L . -f batch-byte-compile embark-cid.el
-```
-
-## Testing
-
-```bash
-# Run the full test suite (79 tests):
-emacs -Q --batch -L . -L test -l test/cid-mode-test.el \
-  -f ert-run-tests-batch-and-exit
-
-# Smoke test decode commands:
-emacs -Q --batch -L . -l cid-mode.el \
-  --eval '(cid-decode "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco")' \
-  --eval '(cid-decode "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")' \
-  --eval '(message "All decodes OK")'
-```
-
-### Lint gate
-
-`checks.lint` runs `package-lint` and `checkdoc` over `*.el` and
-`test/*.el`, so the tests keep the same header and docstring rules as
-the code.  These settings are deliberate:
-
-- `package-lint--sane-prefixes` gains `magit-cid` and `embark-cid`,
-  because `magit-cid-*-section-map` follows the magit-section naming
-  convention and `embark-cid-*` belongs to the Embark module.
-- `package-lint--check-eval-after-load` is turned off.  The deferred
-  loads sit inside `;;;###autoload` cookies on purpose: the autoloads
-  file must register the Org link type and the Embark actions.
-- magit-section is not in the offline ELPA index, so the check adds a
-  `package-alist` stub.
-
-`checkdoc` exits 0 on findings, so the check fails on non-empty output
-instead.
-
-### Test vectors
-
-|Vector                                                       |Type |Description                             |
-|-------------------------------------------------------------|-----|----------------------------------------|
-|`QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T`             |CIDv0|Big Buck Bunny, sha2-256, dag-pb        |
-|`bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi`|CIDv1|base32 lowercase nopad, sha2-256, dag-pb|
-
-## Keybindings
+### Keybindings
 
 ### `cid-mode-map` (global)
 
@@ -312,144 +281,6 @@ These keymaps are auto-discovered by magit-section via the naming convention
 |`w`  |`embark-cid-copy`        |Copy CID to kill ring          |
 |`b`  |`embark-cid-open-gateway`|Open CID on IPFS gateway       |
 
-## Conventions
-
-### Test layout
-
-Tests live in `test/` (singular), one file per source unit, named
-`<unit>-test.el`.  Shared fixtures go in `cid-mode-test-helper.el`.
-That name ends in `-helper.el`, not `-test.el`, so the glob
-`test/*-test.el` keeps loading only real tests.
-
-```
-test/
-  cid-mode-test.el         # tests for cid-mode.el
-  cid-mode-test-helper.el  # shared fixtures
-```
-
-The helpers resolve the package root from their own path, so the suite
-runs from any working directory:
-
-```elisp
-(defconst cid-mode-test--source-directory
-  (expand-file-name ".." cid-mode-test--test-directory))
-```
-
-The `checkPhase` copies `${./test}` back into the build directory,
-because `melpaBuild` stages only root `*.el` files.  It then loads every
-file matched by `test/*-test.el`, so a new test file needs no flake
-edit.  `failglob` plus the `||` guard stops a zero-test pass.
-
-Section tests read the tree, not the text.  `cid-mode-test.el` keeps
-four helpers for that:
-
-- `cid-test--with-buffer` — decodes a CID into a fresh buffer, runs the
-  body with that buffer current, and kills the buffer afterwards.  It
-  kills a leftover buffer first, so no fold, point record or stale tree
-  leaks from an earlier test.
-- `cid-test--section` — returns the section of a type and value, found
-  with `magit-map-sections`.
-- `cid-test--root-values` — returns the value of every child of the
-  root section, in hook order.  A structure test compares that one list
-  and covers both the hook list and the inserter output.
-- `cid-test--render-alpha` — renders a small synthetic tree, optionally
-  with padding above the group or extra lines inside it, for the point
-  record and offset tests.
-
-Assertions go through `(oref section type)`, `(oref section value)`,
-`(oref section hidden)` and `(eq section old-section)`.  A fold test
-reaches a section through its visible heading, because `search-forward`
-skips invisible text.  Tests that insert by hand wrap the insertion in
-`(let ((inhibit-read-only t)) ...)`, because the mode body makes the
-buffer read-only.
-
-### Package name and the entry library
-
-The package name matches the library, the provided feature and the
-major mode: `pname = "cid-mode"` in `flake.nix`, `cid-mode.el`
-in the source.  `use-package SYMBOL` expands to `(require SYMBOL)`
-and `:ensure t` looks up the package named by SYMBOL, so the three
-names must agree.  Users configure the package through
-`(use-package cid-mode ...)`, with `M-x customize-group cid` for the
-options and faces.
-
-The package ships one mode, so it takes the mode name.  Do not add a
-suite entry such as `ipfs-modes` while `cid-mode` stays the only
-mode: a package name that names a plan confuses the `use-package`
-lookup and hides the mode.  If a second mode lands in this
-repository, rename the package then and declare the old name with
-`:old-names` in the MELPA recipe.
-
-Every user-facing command keeps its `;;;###autoload` cookie, and
-`test/cid-mode-test.el` checks them in `cid-autoloads`.  Add a new
-command there when adding it to `cid-mode.el`.  The autoload file also
-registers the `ipfs://`/`ipns://` handlers and defers the `ol-cid`
-require, so an installed package needs no explicit require.
-
-### `defvar-keymap` with `:parent`
-
-Keymaps use `defvar-keymap` with explicit `:parent` to inherit from
-standard mode maps.  `cid-mode-map` inherits from `magit-section-mode-map`,
-which provides `TAB`/`S-TAB` for collapse/cycle, `n`/`p` for
-navigation, `1`..`4` for show-level commands, `q` (`quit-window`)
-and `g` (`revert-buffer`) for free:
-
-```elisp
-(defvar-keymap cid-mode-map
-  :doc "Keymap for `cid-mode' buffers."
-  :parent magit-section-mode-map
-  "g" #'cid-revert
-  "w" #'cid-copy-cid
-  "b" #'cid-open-gateway)
-```
-
-### Section-specific keymaps via naming convention
-
-Magit-section automatically discovers per-section-type keymaps.  When
-creating a section via `(magit-insert-section (cid-field "Algorithm") ...)`,
-if a variable named `magit-cid-field-section-map` exists and is bound,
-it is used as the section's keymap:
-
-```elisp
-(defvar-keymap magit-cid-field-section-map
-  :doc "Keymap for CID field sections (individual field lines)."
-  "RET" #'cid-copy-field-value
-  "y"   #'cid-copy-field-value)
-
-(defvar-keymap magit-cid-section-section-map
-  :doc "Keymap for CID section headings (Identity, Multihash, etc.)."
-  "RET" #'magit-section-toggle)
-```
-
-No manual `define-key` / `make-sparse-keymap` calls.
-
-### `require` order
-
-Required built-in packages come first, alphabetically, followed by
-`cl-lib` and `magit-section`:
-
-```elisp
-(require 'bookmark)
-(require 'browse-url)
-(require 'cl-lib)
-(require 'magit-section)
-(require 'rx)
-(require 'thingatpt)
-```
-
-### Derive from `magit-section-mode`
-
-`cid-mode` derives from `magit-section-mode` (which itself derives from
-`special-mode`).  This gives read-only buffers, collapsible sections,
-navigation (`magit-section-forward`/`magit-section-backward`), and
-standard buffer conventions for free.
-
-`magit-section-mode-map` carries `:full t :suppress t`, so it answers
-through the parent of `cid-mode-map`: `TAB`, `S-TAB`, `M-TAB`, `^`,
-`n`/`p`, `M-n`/`M-p`, `1` to `4` and `M-1` to `M-4`.  Check a new
-binding against that list before adding it: a mode that binds `n` or a
-digit loses the Magit meaning of that key.
-
 ### `cid-info` struct
 
 All parsed data lives in a `cl-defstruct` value.  The mode stores two
@@ -457,27 +288,6 @@ buffer-local variables, `cid--info` and `cid--rendered`, so
 `revert-buffer` stays simple.  `cid--info` holds the decoded struct.
 `cid--rendered` holds the key of the last render and drives the render
 skip.
-
-### Pure decoder functions
-
-All decoding/parsing functions declare `(side-effect-free t)` where
-applicable.  Decoders that depend only on their arguments and the
-constant multibase/multicodec/multihash tables also declare `(pure t)`,
-so the byte compiler can fold them:
-
-```elisp
-(declare (pure t) (side-effect-free t))
-```
-
-Only `cid--display` and the interactive commands have side effects.
-Functions that read point or buffer text (`cid--bounds`,
-`cid--thing-at-point`) stay `side-effect-free` at most, never pure.
-
-### Graceful error handling
-
-Invalid encodings, truncated data, and unknown codes all produce
-structured error messages (warnings in the display), not runtime
-errors.
 
 ### `cid-decode-at-point`
 
@@ -545,86 +355,6 @@ autoloads file).
 
 Embark actions and the `ipfs://`/`ipns://` URL handler both
 use `cid-gateway-url` as their gateway.
-
-### `ol-cid` is opt-in
-
-`cid-mode.el` uses `(with-eval-after-load 'org (require 'ol-cid nil t))`
-— the `nil t` means it silently no-ops when ol-cid is not installed,
-so users who don't use Org incur no cost.  `declare-function` stubs
-in `ol-cid.el` handle cross-file references without hard dependencies.
-
-### `bookmark-handler-type`
-
-Bookmark jump functions declare their handler type for the bookmark UI:
-
-```elisp
-(put 'cid-bookmark-jump 'bookmark-handler-type "CID")
-```
-
-### Byte-compiler silencing
-
-`declare-function` silences the byte-compiler only.  It has no runtime
-effect and creates no autoload.  Use it only when the target function
-carries its own `;;;###autoload` cookie in the package autoloads file,
-as `cid-decode` does:
-
-```elisp
-(declare-function cid-decode "cid-mode")     ; ol-cid.el
-(defvar cid--info)
-```
-
-When the target is a private function without an autoload cookie,
-`declare-function` leaves a void function at runtime.  Load the
-package instead.  `embark-cid.el` calls `cid--bounds`, which has no
-autoload cookie, so it requires the package:
-
-```elisp
-(require 'cid-mode)
-```
-
-### `rx` character class
-
-Spell the CID character class with `char`, not `any`:
-
-```elisp
-(rx-define cid-char (char "A-Za-z0-9"))
-```
-
-Both forms match the same characters.  `package-lint` reads a bare
-`any` as the Emacs 31 alias and demands a newer Emacs dependency, while
-`char` draws no finding.
-
-### `cl-lib` prefix for Emacs functions
-
-Use the `cl-` prefixed form of standard Emacs functions that have a
-`cl-lib` alias.  `melpaBuild`'s isolated compilation environment does
-not resolve unprefixed forms like `evenp` from `cl-extra`, even when
-`cl-lib` is required.  Use `cl-evenp` instead of `evenp`:
-
-```elisp
-;; Wrong — unresolvable in melpaBuild
-(when (evenp len) …)
-
-;; Correct
-(when (cl-evenp len) …)
-```
-
-### `let*` for sequential bindings
-
-In `lexical-binding: t`, plain `let` evaluates all init forms in the
-outer scope — later bindings cannot reference earlier ones.  Use
-`let*` when one binding's init form depends on a prior binding.
-
-### CID detection validates by decoding
-
-`cid--bounds` finds word boundaries with `skip-chars-forward/backward`
-and `rx`-compiled patterns, then validates the candidate with
-`cid--valid-cid-string-p`: the word must fully decode to a CIDv0
-multihash or a CIDv1 version/codec/multihash framing **without parse
-errors**.  This rejects prose words that merely share a multibase
-prefix (e.g. `crate` is base32pad-prefixed but decodes to bytes that
-do not form a valid CID).  Base32 CIDs legitimately contain `l`, so
-no ambiguous-character exclusion is applied.
 
 ### Display rendering
 
@@ -797,29 +527,306 @@ The hook sits inside `cid--unless-rendered`, so a decode that skips
 the render leaves the hook unrun.  Put decoration that must survive a
 revisit in `cid-mode-hook` or in the buffer setup, not here.
 
+### CID detection validates by decoding
+
+`cid--bounds` finds word boundaries with `skip-chars-forward/backward`
+and `rx`-compiled patterns, then validates the candidate with
+`cid--valid-cid-string-p`: the word must fully decode to a CIDv0
+multihash or a CIDv1 version/codec/multihash framing **without parse
+errors**.  This rejects prose words that merely share a multibase
+prefix (e.g. `crate` is base32pad-prefixed but decodes to bytes that
+do not form a valid CID).  Base32 CIDs legitimately contain `l`, so
+no ambiguous-character exclusion is applied.
+
+
+## Rules
+
+### Package name and the entry library
+
+The package name matches the library, the provided feature and the
+major mode: `pname = "cid-mode"` in `flake.nix`, `cid-mode.el`
+in the source.  `use-package SYMBOL` expands to `(require SYMBOL)`
+and `:ensure t` looks up the package named by SYMBOL, so the three
+names must agree.  Users configure the package through
+`(use-package cid-mode ...)`, with `M-x customize-group cid` for the
+options and faces.
+
+The package ships one mode, so it takes the mode name.  Do not add a
+suite entry such as `ipfs-modes` while `cid-mode` stays the only
+mode: a package name that names a plan confuses the `use-package`
+lookup and hides the mode.  If a second mode lands in this
+repository, rename the package then and declare the old name with
+`:old-names` in the MELPA recipe.
+
+Every user-facing command keeps its `;;;###autoload` cookie, and
+`test/cid-mode-test.el` checks them in `cid-autoloads`.  Add a new
+command there when adding it to `cid-mode.el`.  The autoload file also
+registers the `ipfs://`/`ipns://` handlers and defers the `ol-cid`
+require, so an installed package needs no explicit require.
+
+### Pure decoder functions
+
+All decoding/parsing functions declare `(side-effect-free t)` where
+applicable.  Decoders that depend only on their arguments and the
+constant multibase/multicodec/multihash tables also declare `(pure t)`,
+so the byte compiler can fold them:
+
+```elisp
+(declare (pure t) (side-effect-free t))
+```
+
+Only `cid--display` and the interactive commands have side effects.
+Functions that read point or buffer text (`cid--bounds`,
+`cid--thing-at-point`) stay `side-effect-free` at most, never pure.
+
+### Graceful error handling
+
+Invalid encodings, truncated data, and unknown codes all produce
+structured error messages (warnings in the display), not runtime
+errors.
+
+### `ol-cid` is opt-in
+
+`cid-mode.el` uses `(with-eval-after-load 'org (require 'ol-cid nil t))`
+— the `nil t` means it silently no-ops when ol-cid is not installed,
+so users who don't use Org incur no cost.  `declare-function` stubs
+in `ol-cid.el` handle cross-file references without hard dependencies.
+
+### Byte-compiler silencing
+
+`declare-function` silences the byte-compiler only.  It has no runtime
+effect and creates no autoload.  Use it only when the target function
+carries its own `;;;###autoload` cookie in the package autoloads file,
+as `cid-decode` does:
+
+```elisp
+(declare-function cid-decode "cid-mode")     ; ol-cid.el
+(defvar cid--info)
+```
+
+When the target is a private function without an autoload cookie,
+`declare-function` leaves a void function at runtime.  Load the
+package instead.  `embark-cid.el` calls `cid--bounds`, which has no
+autoload cookie, so it requires the package:
+
+```elisp
+(require 'cid-mode)
+```
+
+## Conventions
+
+### `defvar-keymap` with `:parent`
+
+Keymaps use `defvar-keymap` with explicit `:parent` to inherit from
+standard mode maps.  `cid-mode-map` inherits from `magit-section-mode-map`,
+which provides `TAB`/`S-TAB` for collapse/cycle, `n`/`p` for
+navigation, `1`..`4` for show-level commands, `q` (`quit-window`)
+and `g` (`revert-buffer`) for free:
+
+```elisp
+(defvar-keymap cid-mode-map
+  :doc "Keymap for `cid-mode' buffers."
+  :parent magit-section-mode-map
+  "g" #'cid-revert
+  "w" #'cid-copy-cid
+  "b" #'cid-open-gateway)
+```
+
+### Section-specific keymaps via naming convention
+
+Magit-section automatically discovers per-section-type keymaps.  When
+creating a section via `(magit-insert-section (cid-field "Algorithm") ...)`,
+if a variable named `magit-cid-field-section-map` exists and is bound,
+it is used as the section's keymap:
+
+```elisp
+(defvar-keymap magit-cid-field-section-map
+  :doc "Keymap for CID field sections (individual field lines)."
+  "RET" #'cid-copy-field-value
+  "y"   #'cid-copy-field-value)
+
+(defvar-keymap magit-cid-section-section-map
+  :doc "Keymap for CID section headings (Identity, Multihash, etc.)."
+  "RET" #'magit-section-toggle)
+```
+
+No manual `define-key` / `make-sparse-keymap` calls.
+
+### `require` order
+
+Required built-in packages come first, alphabetically, followed by
+`cl-lib` and `magit-section`:
+
+```elisp
+(require 'bookmark)
+(require 'browse-url)
+(require 'cl-lib)
+(require 'magit-section)
+(require 'rx)
+(require 'thingatpt)
+```
+
+### Derive from `magit-section-mode`
+
+`cid-mode` derives from `magit-section-mode` (which itself derives from
+`special-mode`).  This gives read-only buffers, collapsible sections,
+navigation (`magit-section-forward`/`magit-section-backward`), and
+standard buffer conventions for free.
+
+`magit-section-mode-map` carries `:full t :suppress t`, so it answers
+through the parent of `cid-mode-map`: `TAB`, `S-TAB`, `M-TAB`, `^`,
+`n`/`p`, `M-n`/`M-p`, `1` to `4` and `M-1` to `M-4`.  Check a new
+binding against that list before adding it: a mode that binds `n` or a
+digit loses the Magit meaning of that key.
+
+### `rx` character class
+
+Spell the CID character class with `char`, not `any`:
+
+```elisp
+(rx-define cid-char (char "A-Za-z0-9"))
+```
+
+Both forms match the same characters.  `package-lint` reads a bare
+`any` as the Emacs 31 alias and demands a newer Emacs dependency, while
+`char` draws no finding.
+
+### `cl-lib` prefix for Emacs functions
+
+Use the `cl-` prefixed form of standard Emacs functions that have a
+`cl-lib` alias.  `melpaBuild`'s isolated compilation environment does
+not resolve unprefixed forms like `evenp` from `cl-extra`, even when
+`cl-lib` is required.  Use `cl-evenp` instead of `evenp`:
+
+```elisp
+;; Wrong — unresolvable in melpaBuild
+(when (evenp len) …)
+
+;; Correct
+(when (cl-evenp len) …)
+```
+
+### `let*` for sequential bindings
+
+In `lexical-binding: t`, plain `let` evaluates all init forms in the
+outer scope — later bindings cannot reference earlier ones.  Use
+`let*` when one binding's init form depends on a prior binding.
+
+### `bookmark-handler-type`
+
+Bookmark jump functions declare their handler type for the bookmark UI:
+
+```elisp
+(put 'cid-bookmark-jump 'bookmark-handler-type "CID")
+```
+
 ### Buffer directory
 
 CID buffers set `default-directory` to `temporary-file-directory`
 instead of inheriting the user's current directory.
-### Screenshot via Nix
 
-`nix/emacs-screenshot.nix` provides a reproducible way to render CID decode
-output as a PNG image, following the same pattern as `~/nixos.el` and
-`~/crate.el`.  It receives the `cid-mode` derivation built in `flake.nix`
-(passed in by the flake), launches an
-Emacs frame under `xvfb-run` with the modus-operandi theme and Iosevka
-font, decodes the Big Buck Bunny CID, makes the buffer the sole window,
-sizes the frame to fit, and captures the frame with `x-export-frames`.
+## Testing
+
+```bash
+# Run the full test suite (79 tests):
+emacs -Q --batch -L . -L test -l test/cid-mode-test.el \
+  -f ert-run-tests-batch-and-exit
+
+# Smoke test decode commands:
+emacs -Q --batch -L . -l cid-mode.el \
+  --eval '(cid-decode "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco")' \
+  --eval '(cid-decode "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi")' \
+  --eval '(message "All decodes OK")'
+```
+
+### Test layout
+
+Tests live in `test/` (singular), one file per source unit, named
+`<unit>-test.el`.  Shared fixtures go in `cid-mode-test-helper.el`.
+That name ends in `-helper.el`, not `-test.el`, so the glob
+`test/*-test.el` keeps loading only real tests.
 
 ```
-nix build .#screenshot --out-link /tmp/screenshot
+test/
+  cid-mode-test.el         # tests for cid-mode.el
+  cid-mode-test-helper.el  # shared fixtures
 ```
 
-Available outputs:
-- `png` — light-theme PNG with imagemagick border + shadow + pngquant
-- `svg` — dual-theme (light/dark) SVG via `svgDualTheme`
-- `gitrepo` — SVG wrapped for git hosting
-## TODO
+The helpers resolve the package root from their own path, so the suite
+runs from any working directory:
+
+```elisp
+(defconst cid-mode-test--source-directory
+  (expand-file-name ".." cid-mode-test--test-directory))
+```
+
+The `checkPhase` copies `${./test}` back into the build directory,
+because `melpaBuild` stages only root `*.el` files.  It then loads every
+file matched by `test/*-test.el`, so a new test file needs no flake
+edit.  `failglob` plus the `||` guard stops a zero-test pass.
+
+Section tests read the tree, not the text.  `cid-mode-test.el` keeps
+four helpers for that:
+
+- `cid-test--with-buffer` — decodes a CID into a fresh buffer, runs the
+  body with that buffer current, and kills the buffer afterwards.  It
+  kills a leftover buffer first, so no fold, point record or stale tree
+  leaks from an earlier test.
+- `cid-test--section` — returns the section of a type and value, found
+  with `magit-map-sections`.
+- `cid-test--root-values` — returns the value of every child of the
+  root section, in hook order.  A structure test compares that one list
+  and covers both the hook list and the inserter output.
+- `cid-test--render-alpha` — renders a small synthetic tree, optionally
+  with padding above the group or extra lines inside it, for the point
+  record and offset tests.
+
+Assertions go through `(oref section type)`, `(oref section value)`,
+`(oref section hidden)` and `(eq section old-section)`.  A fold test
+reaches a section through its visible heading, because `search-forward`
+skips invisible text.  Tests that insert by hand wrap the insertion in
+`(let ((inhibit-read-only t)) ...)`, because the mode body makes the
+buffer read-only.
+
+### Lint gate
+
+`checks.lint` runs `package-lint` and `checkdoc` over `*.el` and
+`test/*.el`, so the tests keep the same header and docstring rules as
+the code.  These settings are deliberate:
+
+- `package-lint--sane-prefixes` gains `magit-cid` and `embark-cid`,
+  because `magit-cid-*-section-map` follows the magit-section naming
+  convention and `embark-cid-*` belongs to the Embark module.
+- `package-lint--check-eval-after-load` is turned off.  The deferred
+  loads sit inside `;;;###autoload` cookies on purpose: the autoloads
+  file must register the Org link type and the Embark actions.
+- magit-section is not in the offline ELPA index, so the check adds a
+  `package-alist` stub.
+
+`checkdoc` exits 0 on findings, so the check fails on non-empty output
+instead.
+
+### Test vectors
+
+|Vector                                                       |Type |Description                             |
+|-------------------------------------------------------------|-----|----------------------------------------|
+|`QmbGtJg23skhvFmu9mJiePVByhfzu5rwo74MEkVDYAmF5T`             |CIDv0|Big Buck Bunny, sha2-256, dag-pb        |
+|`bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi`|CIDv1|base32 lowercase nopad, sha2-256, dag-pb|
+
+## Dependencies
+
+|Dependency   |Required?|Why                                                |
+|-------------|---------|---------------------------------------------------|
+|Emacs 30.1   |yes      |`cl-defstruct`, `string-replace`, `defvar-keymap`  |
+|magit-section|yes      |collapsible sections via `magit-insert-section`    |
+|browse-url   |built-in |`cid-open-gateway` opens the CID on an IPFS gateway|
+|bookmark     |built-in |`cid-bookmark-jump`, `cid--bookmark-make-record`   |
+|rx           |built-in |`rx-define` for CID pattern matching               |
+|thingatpt    |built-in |`thing-at-point` integration for `cid` type        |
+|ol (org)     |soft     |Org link support via `ol-cid.el` (opt-in load)     |
+|embark       |soft     |Embark actions via `embark-cid.el` (opt-in load)   |
+
+## Open work
 
 - **`dag-mode`** — browse IPLD DAG nodes by following links in
   dag-pb/dag-cbor content
