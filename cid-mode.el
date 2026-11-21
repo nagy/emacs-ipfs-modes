@@ -602,7 +602,10 @@ To decode a CID, type \\[cid-decode].
   (setq-local list-buffers-directory nil)
   ;; A render inserts the whole tree once and then only reads it, and
   ;; no section opens a lazy body, so plain integers stay valid and a
-  ;; large tree avoids the superlinear marker cost.
+  ;; large tree avoids the superlinear marker cost.  Never give a
+  ;; section a lazy body (`magit-insert-section-body'): it signals
+  ;; `markerp' here.  Never edit the buffer after a render: the
+  ;; integers go stale.
   (setq-local magit-section-inhibit-markers t)
   ;; Headings carry their text verbatim and show no child counts, so
   ;; the count rewrite never fires and never moves recorded positions.
@@ -738,7 +741,8 @@ Works on `cid-field' sections (field lines like Algorithm, Digest Size, etc.)."
   (let ((section (magit-current-section)))
     (unless (and section (eq (oref section type) 'cid-field))
       (user-error "No field at point"))
-    ;; The buffer text is: "%-18s LABEL VALUE"
+    ;; The buffer text is: "%-18s LABEL VALUE".  The 19 below couples
+    ;; to the padding in `cid--insert-field': change the two together.
     (save-excursion
       (goto-char (oref section start))
       (forward-char 19)
@@ -770,6 +774,11 @@ survive the render through the section idents."
   (let ((record (cid--point-record)))
     (let ((inhibit-read-only t))
       (erase-buffer)
+      ;; The root value names the buffer kind, so a second mode must
+      ;; not reuse `cid'.  Keep a count or a size in the heading text
+      ;; and never in a section value: the value is the ident that
+      ;; carries the fold and the point record, and a changing ident
+      ;; loses both.
       (magit-insert-section (cid-root 'cid)
         (magit-run-section-hook 'cid-sections-hook))
       (set-buffer-modified-p nil))
@@ -786,6 +795,8 @@ The record holds the section, the line offset from the section
 start and the column, which `cid--restore-record' replays after a
 render."
   (let ((position (or position (point))))
+    ;; Measure the offset with `line-number-at-pos' differences:
+    ;; `count-lines' answers 1 for a region inside one line.
     (when-let* ((section (magit-section-at position)))
       (list :section section
             :line (- (line-number-at-pos position)
@@ -817,6 +828,8 @@ buffer order."
      (lambda (section)
        (when (memq (oref section type) '(cid-section cid-field))
          (push (cons (oref section value) (oref section start)) index))))
+    ;; `magit-map-sections' yields depth first and ends with the root,
+    ;; so sort by start position to get buffer order.
     (sort index (lambda (a b) (< (cdr a) (cdr b))))))
 
 (defun cid--display (info)
@@ -829,6 +842,10 @@ buffer order."
         (setq-local default-directory temporary-file-directory)
         (setq cid--info info)
         (cid--render)
+        ;; Inside `cid--unless-rendered', so a decode that skips the
+        ;; render leaves the hook unrun.  A decoration that must
+        ;; survive a revisit belongs in `cid-mode-hook' or in the
+        ;; buffer setup.
         (run-hooks 'cid-decode-hook)))
     (pop-to-buffer buf)))
 
@@ -952,6 +969,9 @@ For `thing-at-point' integration."
   (when-let* ((bounds (cid--bounds)))
     (buffer-substring-no-properties (car bounds) (cdr bounds))))
 
+;; The `cid' thing type works in any buffer, not only in `cid-mode'
+;; buffers, so `thing-at-point' and Embark reach a CID in a log line or
+;; a mail message.
 (put 'cid 'bounds-of-thing-at-point #'cid--bounds)
 (put 'cid 'thing-at-point #'cid--thing-at-point)
 
@@ -995,7 +1015,9 @@ the configured IPFS gateway."
 
 ;;;###autoload
 ;; browse-url is required above, so the handlers can be registered
-;; directly at load time (no with-eval-after-load needed).
+;; directly at load time (no with-eval-after-load needed).  They go into
+;; `browse-url-default-handlers', not into the user-reserved
+;; `browse-url-handlers', so a user entry wins and stays intact.
 (add-to-list 'browse-url-default-handlers
              (cons "\\`ipfs://" #'cid--browse-ipfs))
 (add-to-list 'browse-url-default-handlers

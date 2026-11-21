@@ -37,6 +37,10 @@
 
 (require 'ol)
 
+;; These stubs silence the byte compiler only: no runtime effect and no
+;; autoload.  That holds here because every target is a command with
+;; its own `;;;###autoload' cookie in the cid-mode autoloads file.  A
+;; private target would need `(require 'cid-mode)' instead.
 (declare-function cid-decode "cid-mode")
 (declare-function cid-info-cid-string "cid-mode")
 (declare-function cid-mode "cid-mode")
