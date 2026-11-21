@@ -102,8 +102,7 @@ varints.
 
 ### Build gate
 
-- Do not let a byte-compile warning land.  `turnCompilationWarningToError`
-  in `flake.nix` turns each one into a build failure.
+- Never silence a byte-compile warning.  Fix it.
 - Do not silence the lint gate.  A new prefix family belongs in
   `package-lint--sane-prefixes`, not in a blanket disable.
 
