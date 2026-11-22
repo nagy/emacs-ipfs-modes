@@ -73,6 +73,7 @@
             }:
             melpaBuild {
               pname = "cid-mode";
+              preferLocalBuild = true;
               inherit version;
 
               src = lib.cleanSource ./.;
