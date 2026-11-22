@@ -167,7 +167,7 @@
             # a stray symbol prefix or an undocumented argument, so run
             # package-lint and checkdoc over the sources and the tests.
             lint =
-              pkgs.runCommand "cid-mode-lint"
+              pkgs.runCommandLocal "cid-mode-lint"
                 {
                   nativeBuildInputs = [
                     # magit-section is not in the offline ELPA index that the
